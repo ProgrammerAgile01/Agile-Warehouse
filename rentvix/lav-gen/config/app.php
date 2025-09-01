@@ -14,6 +14,8 @@ return [
     */
 
     'name' => env('APP_NAME', 'Laravel'),
+     // Tambahkan ini:
+    'allowed_gateway_keys' => env('ALLOWED_GATEWAY_KEYS', ''),
 
     /*
     |--------------------------------------------------------------------------

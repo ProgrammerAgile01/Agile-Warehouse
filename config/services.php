@@ -37,7 +37,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'appgenerate' => [
-        'base' => env('APPGENERATE_BASE', 'http://localhost:9100/api'),
+        'base' => env('APPGENERATE_BASE', 'http://localhost:9001/api'),
         'key'  => env('WAREHOUSE_API_KEY', ''),
     ],
 

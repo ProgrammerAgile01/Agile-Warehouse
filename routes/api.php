@@ -1,35 +1,44 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\VerifyClientKey;
 use App\Http\Controllers\Gateway\ProductGatewayController;
 use App\Http\Controllers\Gateway\FeatureGatewayController;
 use App\Http\Controllers\Gateway\MenuGatewayController;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes - Agile Warehouse (Gateway)
-|--------------------------------------------------------------------------
-|
-| Panel FE → Warehouse: kirim X-CLIENT-KEY (opsional: jika VerifyClientKey diaktifkan)
-| Warehouse → AppGenerate: kirim X-AG-KEY (diatur di service client)
-|
-*/
+// Health check (tanpa middleware)
+Route::get('/health', fn () => response()->json([
+    'ok'      => true,
+    'service' => 'agile-warehouse',
+]));
 
-Route::middleware(['client.key'])->group(function () {
+// ================== CATALOG (read-only proxy to AppGenerate) ==================
+Route::prefix('catalog')
+    // ->middleware(['client.key']) // <-- aktifkan jika punya middleware validasi X-CLIENT-KEY
+    ->group(function () {
+        // Daftar produk (digroup dari semua fitur AppGenerate)
+        Route::get('/products',            [ProductGatewayController::class, 'index']);
+        // Detail agregat satu produk (dari kumpulan fiturnya)
+        Route::get('/products/{code}',     [ProductGatewayController::class, 'show']);
 
-    // Products (proxy dari AppGenerate)
-    Route::get('/catalog/products', [ProductGatewayController::class, 'index']);
-    Route::get('/catalog/products/{idOrCode}', [ProductGatewayController::class, 'show']);
+        // Fitur per produk (read-only, bersumber dari AppGenerate)
+        Route::get('/products/{code}/features', [ProductGatewayController::class, 'features']);
 
-    // Features (proxy dari AppGenerate)
-    Route::get('/catalog/features', [FeatureGatewayController::class, 'index']);
-    Route::get('/catalog/products/{idOrCode}/features', [FeatureGatewayController::class, 'byProduct']);
+        // Menu per produk (read-only, bersumber dari AppGenerate)
+        Route::get('/products/{code}/menus',    [ProductGatewayController::class, 'menus']);
+    });
 
-       // === MENUS (baru) ===
-    Route::get('/catalog/menus', [MenuGatewayController::class, 'index']);
-    Route::get('/catalog/menus/tree', [MenuGatewayController::class, 'tree']);
-    Route::get('/catalog/products/{idOrCode}/menus', [MenuGatewayController::class, 'byProduct']);
-});
+// ================== (Opsional) Endpoint util untuk debugging ==================
+Route::prefix('features')
+    // ->middleware(['client.key']) // <-- opsional validasi X-CLIENT-KEY
+    ->group(function () {
+        // List fitur dengan filter ?product_code=...&type=...
+        Route::get('/',                 [FeatureGatewayController::class, 'index']);
+        // Alias fitur-per-produk: /api/features/{product}
+        Route::get('/{product}',        [FeatureGatewayController::class, 'byProduct']);
+    });
 
-// Healthcheck sederhana (tanpa kunci)
-Route::get('/health', fn () => response()->json(['ok' => true, 'service' => 'agile-warehouse']));
+    // === MENUS gateway (baru) ===
+    Route::get('/catalog/menus',                    [MenuGatewayController::class, 'index']);     // ?product_code=&type=
+    Route::get('/catalog/menus/tree',               [MenuGatewayController::class, 'tree']);      // ?product_code=
+    Route::get('/catalog/products/{code}/menus',    [MenuGatewayController::class, 'byProduct']); // by product code
