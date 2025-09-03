@@ -4,6 +4,44 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Public\FeaturePublicController;
 use App\Http\Controllers\Generate\MenuController;
 use App\Http\Middleware\VerifyGatewayKey;
+use App\Http\Controllers\Auth\AuthController;
+
+use App\Http\Middleware\JwtEnsureType;
+use App\Http\Middleware\EnsurePermission;
+
+/*
+|--------------------------------------------------------------------------
+| AUTH (JWT) 2 langkah
+|--------------------------------------------------------------------------
+*/
+
+// 1) Company login (tanpa token)
+Route::post('/auth/company/login', [AuthController::class, 'companyLogin']);
+
+// 2) Company me (wajib token company)
+Route::get('/auth/company/me', [AuthController::class, 'companyMe'])
+    ->middleware(JwtEnsureType::class.':company');
+
+// 3) User login (wajib token company di Authorization)
+Route::post('/auth/user/login', [AuthController::class, 'userLogin'])
+    ->middleware(JwtEnsureType::class.':company');
+
+// 4) User me (wajib token user)
+Route::get('/auth/user/me', [AuthController::class, 'userMe'])
+    ->middleware(JwtEnsureType::class.':user');
+
+// 5) Logout & Refresh (boleh company/user) – contoh dua route berbeda
+Route::post('/auth/logout/company', [AuthController::class, 'logout'])
+    ->middleware(JwtEnsureType::class.':company');
+
+Route::post('/auth/logout/user', [AuthController::class, 'logout'])
+    ->middleware(JwtEnsureType::class.':user');
+
+Route::post('/auth/refresh/company', [AuthController::class, 'refresh'])
+    ->middleware(JwtEnsureType::class.':company');
+
+Route::post('/auth/refresh/user', [AuthController::class, 'refresh'])
+    ->middleware(JwtEnsureType::class.':user');
 
 Route::get('{entity}/export-pdf', [\App\Http\Controllers\Export\ExportPdfController::class, 'export'])->name('pdf.export');
 // Route for mst_users
@@ -17,6 +55,18 @@ Route::match(['GET','POST'], 'data-kendaraans/actions/{actionKey}', [\App\Http\C
 Route::get('data-kendaraans/export-excel', [\App\Http\Controllers\Generate\DataKendaraanController::class, 'exportExcel']);
 Route::apiResource('data-kendaraans', \App\Http\Controllers\Overrides\DataKendaraanController::class);
 
+// Route for daftar-kendaraans
+Route::get('daftar-kendaraans/actions', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'listActions']);
+Route::match(['GET','POST'], 'daftar-kendaraans/actions/{actionKey}', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'runAction']);
+Route::get('daftar-kendaraans/export-excel', [\App\Http\Controllers\Generate\DaftarKendaraanController::class, 'exportExcel']);
+Route::apiResource('daftar-kendaraans', \App\Http\Controllers\Overrides\DaftarKendaraanController::class);
+Route::get('/daftar-kendaraans-deleted', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'deletedData']);
+Route::post('/daftar-kendaraans/restore/{id}', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'restore']);
+Route::delete('/daftar-kendaraans/force/{id}', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'forceDelete']);
+Route::apiResource('level_users', App\Http\Controllers\Generate\LevelUserController::class);
+Route::apiResource('companies', App\Http\Controllers\Generate\CompanyController::class);
+Route::apiResource('user_managements', App\Http\Controllers\Generate\UserManagementController::class);
+Route::apiResource('access_control_matrices', App\Http\Controllers\Generate\AccessControlMatrixController::class);
 // == menus_START ==
 
 

@@ -61,5 +61,8 @@ class Kernel extends HttpKernel
 
         // === custom middleware kita ===
         'verify.gateway' => \App\Http\Middleware\VerifyGatewayKey::class,
+         'jwt.typ' => \App\Http\Middleware\JwtEnsureType::class,
+    'perm'    => \App\Http\Middleware\EnsurePermission::class,
+    'level'   => \App\Http\Middleware\EnsureLevel::class,
     ];
 }

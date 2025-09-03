@@ -40,6 +40,37 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        'guards' => [
+        // Guard JWT untuk user (UserManagement)
+        'user' => [
+            'driver'   => 'jwt',
+            'provider' => 'users',
+        ],
+
+        // Guard JWT untuk company
+        'company' => [
+            'driver'   => 'jwt',
+            'provider' => 'companies',
+        ],
+
+        // Optional: guard API umum jika dibutuhkan
+        'api' => [
+            'driver'   => 'jwt',
+            'provider' => 'users',
+        ],
+    ],
+
+    'providers' => [
+        'users' => [
+            'driver' => 'eloquent',
+            'model'  => App\Models\UserManagement::class,
+        ],
+
+        'companies' => [
+            'driver' => 'eloquent',
+            'model'  => App\Models\Company::class,
+        ],
+    ],
     ],
 
     /*
@@ -59,17 +90,17 @@ return [
     |
     */
 
-    'providers' => [
-        'users' => [
-            'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\User::class),
-        ],
+    // 'providers' => [
+    //     'users' => [
+    //         'driver' => 'eloquent',
+    //         'model' => env('AUTH_MODEL', App\Models\User::class),
+    //     ],
 
         // 'users' => [
         //     'driver' => 'database',
         //     'table' => 'users',
         // ],
-    ],
+    // ],
 
     /*
     |--------------------------------------------------------------------------
