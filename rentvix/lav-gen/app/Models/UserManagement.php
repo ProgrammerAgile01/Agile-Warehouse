@@ -8,36 +8,46 @@ use Tymon\JWTAuth\Contracts\JWTSubject;
 class UserManagement extends Authenticatable implements JWTSubject
 {
     protected $table = 'user_management';
+
     protected $fillable = [
+        'company_id',
         'nama',
         'email',
         'nomor_telp',
-        'role',
+        'role',        // FK ke level_user.id
         'status',
-        'foto'
+        'foto',
+        'password',
     ];
-    
-     protected $hidden = ['password'];
+
+    protected $hidden = ['password'];
 
     protected $casts = [
-        'password' => 'hashed', // auto hash saat set
+        'password' => 'hashed',
     ];
-    public function role() {
+
+    // ⬇️ pastikan properti ini ada agar ikut tampil di JSON
+    protected $appends = ['foto_url', 'role_name'];
+
+    /** GANTI relasi agar tidak bentrok nama kolom */
+    public function roleRel()
+    {
         return $this->belongsTo(\App\Models\LevelUser::class, 'role');
     }
 
-      public function company() {
-        return $this->belongsTo(\App\Models\Company::class, 'company_id');
-    }
-
+    /** Accessor foto */
     public function getFotoUrlAttribute()
     {
-        return $this->foto
-            ? asset('storage/' . $this->foto)
-            : null;
+        return $this->foto ? asset('storage/' . $this->foto) : null;
     }
 
-     public function getJWTIdentifier() { return $this->getKey(); }
-    public function getJWTCustomClaims() { return ['typ' => 'user']; }
+    /** Accessor nama role yang ramah UI */
+    public function getRoleNameAttribute()
+    {
+        return optional($this->roleRel)->nama_level;
+    }
 
+    // JWT
+    public function getJWTIdentifier() { return $this->getKey(); }
+    public function getJWTCustomClaims() { return ['typ' => 'user']; }
 }

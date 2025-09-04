@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LevelUser extends Model
 {
@@ -12,8 +13,15 @@ class LevelUser extends Model
         'deskripsi',
         'status'
     ];
-    
-    
 
-    
+
+    public function userManagements(): HasMany
+    {
+        return $this->hasMany(UserManagement::class, 'role'); // <— penting: sebutkan FK 'role'
+    }
+    public function accessMatrix(): HasMany
+    {
+        return $this->hasMany(AccessControlMatrix::class, 'user_level_id');
+    }
+
 }

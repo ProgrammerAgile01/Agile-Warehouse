@@ -5,9 +5,12 @@ use App\Http\Controllers\Public\FeaturePublicController;
 use App\Http\Controllers\Generate\MenuController;
 use App\Http\Middleware\VerifyGatewayKey;
 use App\Http\Controllers\Auth\AuthController;
-
+use App\Http\Controllers\Generate\AccessControlMatrixController as ACM;
 use App\Http\Middleware\JwtEnsureType;
 use App\Http\Middleware\EnsurePermission;
+Route::options('/{any}', function () {
+    return response()->noContent(204);
+})->where('any', '.*');
 
 /*
 |--------------------------------------------------------------------------
@@ -63,9 +66,18 @@ Route::apiResource('daftar-kendaraans', \App\Http\Controllers\Overrides\DaftarKe
 Route::get('/daftar-kendaraans-deleted', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'deletedData']);
 Route::post('/daftar-kendaraans/restore/{id}', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'restore']);
 Route::delete('/daftar-kendaraans/force/{id}', [\App\Http\Controllers\Overrides\DaftarKendaraanController::class, 'forceDelete']);
+Route::get('level_users/stats', [App\Http\Controllers\Generate\LevelUserController::class, 'stats']);
 Route::apiResource('level_users', App\Http\Controllers\Generate\LevelUserController::class);
 Route::apiResource('companies', App\Http\Controllers\Generate\CompanyController::class);
 Route::apiResource('user_managements', App\Http\Controllers\Generate\UserManagementController::class);
+Route::get('user_managements/stats', [App\Http\Controllers\Generate\UserManagementController::class, 'stats'])
+    ->name('user_managements.stats');
+    Route::post('access_control_matrices/bulk', [ACM::class, 'storeBulk'])->name('acm.bulk.store');
+Route::put('access_control_matrices/bulk', [ACM::class, 'updateBulk'])->name('acm.bulk.update');
+
+
+Route::get('access_control_matrices/stats', [ACM::class, 'stats'])->name('acm.stats');
+
 Route::apiResource('access_control_matrices', App\Http\Controllers\Generate\AccessControlMatrixController::class);
 // == menus_START ==
 

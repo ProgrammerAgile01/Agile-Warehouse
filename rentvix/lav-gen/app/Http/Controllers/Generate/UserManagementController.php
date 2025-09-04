@@ -12,20 +12,15 @@ class UserManagementController extends Controller
 {
     public function index()
     {
-        try {
-            $rows = UserManagement::orderByDesc('updated_at')->get();
+        $rows = UserManagement::with('roleRel:id,nama_level')
+            ->orderByDesc('updated_at')
+            ->get();
 
-            return response()->json([
-                'success' => true,
-                'message' => "Berhasil menampilkan data UserManagement",
-                'data'    => $rows,
-            ], 200);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success'=> false,
-                'message' => "Gagal menampilkan data UserManagement - " . $e->getMessage(),
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => "Berhasil menampilkan data UserManagement",
+            'data'    => $rows,
+        ], 200);
     }
 
     public function show($id)
@@ -50,6 +45,7 @@ class UserManagementController extends Controller
     {
         // password wajib saat create (untuk login JWT user)
         $validated = $request->validate([
+            'company_id'  => ['required','uuid'],
             'nama'        => ['required', 'string', 'max:150'],
             'email'       => ['required', 'email', 'max:150', 'unique:user_management,email'],
             'nomor_telp'  => ['required', 'string', 'max:50'],
@@ -60,12 +56,13 @@ class UserManagementController extends Controller
         ]);
 
         $data = [
+            'company_id' => $validated['company_id'], // ✅ pakai nilai validasi
             'nama'       => $validated['nama'],
             'email'      => $validated['email'],
             'nomor_telp' => $validated['nomor_telp'],
             'role'       => $validated['role'],
             'status'     => $validated['status'],
-            'password'   => $validated['password'], // auto-hash via casts
+            'password'   => $validated['password'], // auto-hash via casts di model
         ];
 
         if ($request->hasFile('foto')) {
@@ -87,6 +84,7 @@ class UserManagementController extends Controller
 
         // Saat update: email harus unique tapi abaikan current id, password opsional
         $validated = $request->validate([
+            'company_id'  => ['required','uuid'],
             'nama'        => ['required', 'string', 'max:150'],
             'email'       => ['required', 'email', 'max:150', Rule::unique('user_management', 'email')->ignore($row->id)],
             'nomor_telp'  => ['required', 'string', 'max:50'],
@@ -97,6 +95,7 @@ class UserManagementController extends Controller
         ]);
 
         $data = [
+            'company_id' => $validated['company_id'], // ✅ pakai nilai validasi
             'nama'       => $validated['nama'],
             'email'      => $validated['email'],
             'nomor_telp' => $validated['nomor_telp'],
@@ -105,7 +104,7 @@ class UserManagementController extends Controller
         ];
 
         if (!empty($validated['password'])) {
-            $data['password'] = $validated['password']; // auto-hash
+            $data['password'] = $validated['password']; // auto-hash via casts
         }
 
         if ($request->hasFile('foto')) {

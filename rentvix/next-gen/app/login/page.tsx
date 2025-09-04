@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
     Building2,
     User,
@@ -26,6 +25,14 @@ import {
     ArrowLeft,
 } from "lucide-react";
 import Image from "next/image";
+import { API_URL, apiFetch } from "@/lib/api";
+import {
+    setCompanyToken,
+    setUserToken,
+    setPerms,
+    authHeaders,
+} from "@/lib/auth-tokens";
+import { useRouter } from "next/navigation";
 
 type LoginStep = "company" | "user";
 type AuthMethod = "password" | "otp";
@@ -35,16 +42,20 @@ export default function LoginPage() {
     const [authMethod, setAuthMethod] = useState<AuthMethod>("password");
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+
+    // ⬇️ Ganti ke identifier (UUID) alih-alih email – UI tetap
     const [companyData, setCompanyData] = useState({
-        email: "",
+        identifier: "", // <-- ID Perusahaan (UUID)
         password: "",
         otp: "",
     });
+
     const [userData, setUserData] = useState({
-        identifier: "",
+        identifier: "", // email / no hp / username
         password: "",
         otp: "",
     });
+
     const [companyInfo, setCompanyInfo] = useState<{
         name: string;
         logo: string;
@@ -52,38 +63,98 @@ export default function LoginPage() {
 
     const handleCompanyLogin = async () => {
         setIsLoading(true);
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+            const body: any = { identifier: companyData.identifier };
+            if (authMethod === "password") body.password = companyData.password;
+            if (authMethod === "otp") body.otp = companyData.otp;
 
-        // Mock successful company verification
-        setCompanyInfo({
-            name: "PT Rental Kendaraan Sejahtera",
-            logo: "/rentvix-logo.png",
-        });
-        setCurrentStep("user");
-        setIsLoading(false);
+            const res = await fetch(`${API_URL}/auth/company/login`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const j = await res.json();
+
+            // simpan token perusahaan
+            setCompanyToken(j.company_token);
+
+            // tampilkan info perusahaan (opsional, untuk badge)
+            const meRes = await fetch(`${API_URL}/auth/company/me`, {
+                headers: authHeaders("company"),
+            });
+            const company = await meRes.json();
+            setCompanyInfo({
+                name:
+                    company.nama ??
+                    company.name ??
+                    j.company_id ??
+                    "Perusahaan",
+                logo: "/rentvix-logo.png",
+            });
+
+            setCurrentStep("user");
+        } catch (e: any) {
+            alert(e?.message || "Gagal verifikasi perusahaan");
+        } finally {
+            setIsLoading(false);
+        }
     };
+    const router = useRouter();
 
     const handleUserLogin = async () => {
         setIsLoading(true);
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+            const body = {
+                identifier: userData.identifier,
+                method: authMethod,
+                password: userData.password,
+                otp: userData.otp,
+            };
 
-        // Mock successful login - redirect to dashboard
-        window.location.href = "/";
-        setIsLoading(false);
+            // kirim request ke backend (pakai token company di Authorization)
+            const res = await apiFetch(
+                "/auth/user/login",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                },
+                "company" // karena pakai company_token di header
+            );
+
+            // simpan token & perms
+            setUserToken(res.user_token);
+            setPerms(res.perms);
+
+            // redirect ke dashboard
+            router.replace("/");
+        } catch (err: any) {
+            console.error("Login gagal", err);
+            alert(err.message || "Login gagal");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const sendOTP = async () => {
+        // Opsional: panggil endpoint OTP milikmu; placeholder UI tetap
         setIsLoading(true);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        setIsLoading(false);
-        // Show success message
+        try {
+            // await fetch(...);
+            alert(
+                "OTP dikirim (mock). Integrasikan endpoint OTP kalau tersedia."
+            );
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
         <div className="min-h-screen w-full bg-background flex items-center justify-center p-4">
-            {/* Background Pattern */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_80%,_hsl(var(--primary)/0.05)_0%,_transparent_50%)] bg-[radial-gradient(circle_at_80%_20%,_hsl(var(--secondary)/0.05)_0%,_transparent_50%)]" />
 
@@ -158,7 +229,7 @@ export default function LoginPage() {
                             </div>
                         </div>
 
-                        {/* Company Info Display */}
+                        {/* Company Info */}
                         {companyInfo && (
                             <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
                                 <div className="flex items-center space-x-3">
@@ -191,7 +262,7 @@ export default function LoginPage() {
                             </CardTitle>
                             <CardDescription className="mt-2">
                                 {currentStep === "company"
-                                    ? "Masukkan email perusahaan untuk melanjutkan"
+                                    ? "Masukkan ID Perusahaan (UUID) untuk melanjutkan"
                                     : "Masukkan kredensial pengguna untuk mengakses aplikasi"}
                             </CardDescription>
                         </div>
@@ -199,26 +270,25 @@ export default function LoginPage() {
 
                     <CardContent className="space-y-6">
                         {currentStep === "company" ? (
-                            // Company Login Form
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label
-                                        htmlFor="company-email"
+                                        htmlFor="company-id"
                                         className="text-sm font-medium"
                                     >
-                                        Email Perusahaan / Company Email
+                                        ID Perusahaan (UUID)
                                     </Label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                         <Input
-                                            id="company-email"
-                                            type="email"
-                                            placeholder="company@example.com"
-                                            value={companyData.email}
+                                            id="company-id"
+                                            type="text"
+                                            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                            value={companyData.identifier}
                                             onChange={(e) =>
                                                 setCompanyData((prev) => ({
                                                     ...prev,
-                                                    email: e.target.value,
+                                                    identifier: e.target.value,
                                                 }))
                                             }
                                             className="pl-10 bg-background border-border"
@@ -228,8 +298,8 @@ export default function LoginPage() {
 
                                 <Tabs
                                     value={authMethod}
-                                    onValueChange={(value) =>
-                                        setAuthMethod(value as AuthMethod)
+                                    onValueChange={(v) =>
+                                        setAuthMethod(v as AuthMethod)
                                     }
                                 >
                                     <TabsList className="grid w-full grid-cols-2">
@@ -342,7 +412,7 @@ export default function LoginPage() {
                                                     variant="outline"
                                                     onClick={sendOTP}
                                                     disabled={
-                                                        !companyData.email ||
+                                                        !companyData.identifier ||
                                                         isLoading
                                                     }
                                                     className="px-4 bg-transparent"
@@ -351,7 +421,7 @@ export default function LoginPage() {
                                                 </Button>
                                             </div>
                                             <p className="text-xs text-muted-foreground">
-                                                Kode OTP akan dikirim ke email
+                                                Kode OTP akan dikirim ke kontak
                                                 perusahaan
                                             </p>
                                         </div>
@@ -362,7 +432,7 @@ export default function LoginPage() {
                                     onClick={handleCompanyLogin}
                                     disabled={
                                         isLoading ||
-                                        !companyData.email ||
+                                        !companyData.identifier ||
                                         (authMethod === "password"
                                             ? !companyData.password
                                             : !companyData.otp)
@@ -383,9 +453,7 @@ export default function LoginPage() {
                                 </Button>
                             </div>
                         ) : (
-                            // User Login Form
                             <div className="space-y-4">
-                                {/* Back Button */}
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -398,8 +466,6 @@ export default function LoginPage() {
                                     <ArrowLeft className="w-4 h-4 mr-1" />
                                     Kembali ke Login Perusahaan
                                 </Button>
-
-                                <Separator />
 
                                 <div className="space-y-2">
                                     <Label
@@ -428,8 +494,8 @@ export default function LoginPage() {
 
                                 <Tabs
                                     value={authMethod}
-                                    onValueChange={(value) =>
-                                        setAuthMethod(value as AuthMethod)
+                                    onValueChange={(v) =>
+                                        setAuthMethod(v as AuthMethod)
                                     }
                                 >
                                     <TabsList className="grid w-full grid-cols-2">
@@ -581,7 +647,6 @@ export default function LoginPage() {
                             </div>
                         )}
 
-                        {/* Footer Links */}
                         <div className="text-center space-y-2 pt-4 border-t border-border/50">
                             <div className="flex items-center justify-center space-x-4 text-xs text-muted-foreground">
                                 <button className="hover:text-primary transition-colors">
@@ -599,7 +664,6 @@ export default function LoginPage() {
                     </CardContent>
                 </Card>
 
-                {/* Security Notice */}
                 <div className="mt-6 text-center">
                     <div className="inline-flex items-center space-x-2 text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded-full border border-border/50">
                         <Shield className="w-3 h-3" />

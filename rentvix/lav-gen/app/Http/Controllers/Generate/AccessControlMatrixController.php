@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AccessControlMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class AccessControlMatrixController extends Controller
 {
@@ -16,13 +17,13 @@ class AccessControlMatrixController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Berhasil menampilkan data AccessControlMatrix",
-                'data'    => $rows,
+                'message' => 'Berhasil menampilkan data AccessControlMatrix',
+                'data' => $rows,
             ], 200);
         } catch (\Throwable $e) {
             return response()->json([
-                'success'=> false,
-                'message' => "Gagal menampilkan data AccessControlMatrix - " . $e->getMessage(),
+                'success' => false,
+                'message' => 'Gagal menampilkan data AccessControlMatrix: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -35,44 +36,51 @@ class AccessControlMatrixController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => "Berhasil menampilkan data AccessControlMatrix dari id: $id",
-                'data'    => $row,
+                'data' => $row,
             ], 200);
         } catch (\Throwable $e) {
             return response()->json([
-                'success'=> false,
+                'success' => false,
                 'message' => "Gagal menampilkan data AccessControlMatrix dari id: $id - " . $e->getMessage(),
-            ], 500);
+            ], 404);
         }
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'user_level_id' => ['required', 'exists:level_user,id'],
-            'menu_id'       => ['required', 'exists:mst_menus,id'],
-            'view'          => ['nullable', 'boolean'],
-            'add'           => ['nullable', 'boolean'],
-            'edit'          => ['nullable', 'boolean'],
-            'delete'        => ['nullable', 'boolean'],
-            'approve'       => ['nullable', 'boolean'],
+            'user_level_id' => ['required', Rule::exists('level_user', 'id')],
+            'menu_id' => ['nullable', 'integer'],
+            'menu_key' => ['nullable', 'string'],
+            'view' => ['sometimes', 'boolean'],
+            'add' => ['sometimes', 'boolean'],
+            'edit' => ['sometimes', 'boolean'],
+            'delete' => ['sometimes', 'boolean'],
+            'approve' => ['sometimes', 'boolean'],
         ]);
 
-        $data = [
-            'user_level_id' => $validated['user_level_id'],
-            'menu_id'       => $validated['menu_id'],
-            'view'          => (bool) ($validated['view'] ?? false),
-            'add'           => (bool) ($validated['add'] ?? false),
-            'edit'          => (bool) ($validated['edit'] ?? false),
-            'delete'        => (bool) ($validated['delete'] ?? false),
-            'approve'       => (bool) ($validated['approve'] ?? false),
-        ];
+        if (empty($validated['menu_id']) && empty($validated['menu_key'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'menu_id atau menu_key harus diisi salah satu.',
+            ], 422);
+        }
 
-        $row = AccessControlMatrix::create($data);
+        $row = AccessControlMatrix::create([
+            'user_level_id' => (int) $validated['user_level_id'],
+            'menu_id' => $validated['menu_id'] ?? null,
+            'menu_key' => $validated['menu_key'] ?? null,
+            'view' => (bool) ($validated['view'] ?? false),
+            'add' => (bool) ($validated['add'] ?? false),
+            'edit' => (bool) ($validated['edit'] ?? false),
+            'delete' => (bool) ($validated['delete'] ?? false),
+            'approve' => (bool) ($validated['approve'] ?? false),
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'AccessControlMatrix berhasil dibuat',
-            'data'    => $row->fresh(),
+            'message' => 'Berhasil menyimpan AccessControlMatrix',
+            'data' => $row,
         ], 201);
     }
 
@@ -81,94 +89,115 @@ class AccessControlMatrixController extends Controller
         $row = AccessControlMatrix::findOrFail($id);
 
         $validated = $request->validate([
-            'user_level_id' => ['required', 'exists:level_user,id'],
-            'menu_id'       => ['required', 'exists:mst_menus,id'],
-            'view'          => ['nullable', 'boolean'],
-            'add'           => ['nullable', 'boolean'],
-            'edit'          => ['nullable', 'boolean'],
-            'delete'        => ['nullable', 'boolean'],
-            'approve'       => ['nullable', 'boolean'],
+            'user_level_id' => ['required', Rule::exists('level_user', 'id')],
+            'menu_id' => ['nullable', 'integer'],
+            'menu_key' => ['nullable', 'string'],
+            'view' => ['sometimes', 'boolean'],
+            'add' => ['sometimes', 'boolean'],
+            'edit' => ['sometimes', 'boolean'],
+            'delete' => ['sometimes', 'boolean'],
+            'approve' => ['sometimes', 'boolean'],
         ]);
 
-        $data = [
-            'user_level_id' => $validated['user_level_id'],
-            'menu_id'       => $validated['menu_id'],
-            'view'          => (bool) ($validated['view'] ?? false),
-            'add'           => (bool) ($validated['add'] ?? false),
-            'edit'          => (bool) ($validated['edit'] ?? false),
-            'delete'        => (bool) ($validated['delete'] ?? false),
-            'approve'       => (bool) ($validated['approve'] ?? false),
-        ];
+        if (empty($validated['menu_id']) && empty($validated['menu_key'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'menu_id atau menu_key harus diisi salah satu.',
+            ], 422);
+        }
 
-        $row->update($data);
+        $row->update([
+            'user_level_id' => (int) $validated['user_level_id'],
+            'menu_id' => $validated['menu_id'] ?? null,
+            'menu_key' => $validated['menu_key'] ?? null,
+            'view' => (bool) ($validated['view'] ?? false),
+            'add' => (bool) ($validated['add'] ?? false),
+            'edit' => (bool) ($validated['edit'] ?? false),
+            'delete' => (bool) ($validated['delete'] ?? false),
+            'approve' => (bool) ($validated['approve'] ?? false),
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'AccessControlMatrix berhasil diperbarui',
-            'data'    => $row->fresh(),
-        ]);
+            'message' => 'Berhasil mengupdate AccessControlMatrix',
+            'data' => $row,
+        ], 200);
     }
 
     public function destroy($id)
     {
-        AccessControlMatrix::destroy($id);
+        $deleted = AccessControlMatrix::destroy($id);
+
         return response()->json([
-            'success' => true,
-            'message' => '🗑️ Dihapus',
-        ]);
+            'success' => (bool) $deleted,
+            'message' => $deleted ? '🗑️ Dihapus' : 'Data tidak ditemukan',
+        ], $deleted ? 200 : 404);
     }
 
     /**
-     * Sinkronisasi permissions untuk satu user level.
-     * Body:
+     * BULK STORE (POST /access_control_matrices/bulk)
+     * payload:
      * {
-     *   "user_level_id": 3,
+     *   "user_level_id": 1,
      *   "items": [
-     *     { "menu_id": 10, "view": true, "add": false, "edit": true, "delete": false, "approve": false },
-     *     ...
+     *     { "menu_key": "kendaraan::jenisBbm", "view": true, "add": false, ... },
+     *     { "menu_id": 12, "view": false, "add": true, ... }
      *   ]
      * }
      */
-    public function sync(Request $request)
+    public function storeBulk(Request $request)
     {
-        $payload = $request->validate([
-            'user_level_id'    => ['required', 'exists:level_user,id'],
-            'items'            => ['required', 'array'],
-            'items.*.menu_id'  => ['required', 'exists:mst_menus,id'],
-            'items.*.view'     => ['required', 'boolean'],
-            'items.*.add'      => ['required', 'boolean'],
-            'items.*.edit'     => ['required', 'boolean'],
-            'items.*.delete'   => ['required', 'boolean'],
-            'items.*.approve'  => ['required', 'boolean'],
+        $data = $request->validate([
+            'user_level_id' => ['required', Rule::exists('level_user', 'id')],
+            'items' => ['required', 'array'],
+            'items.*.menu_id' => ['nullable', 'integer'],
+            'items.*.menu_key' => ['nullable', 'string'],
+            'items.*.view' => ['sometimes', 'boolean'],
+            'items.*.add' => ['sometimes', 'boolean'],
+            'items.*.edit' => ['sometimes', 'boolean'],
+            'items.*.delete' => ['sometimes', 'boolean'],
+            'items.*.approve' => ['sometimes', 'boolean'],
         ]);
 
-        $levelId = (int) $payload['user_level_id'];
-        $items   = $payload['items'];
-
-        DB::transaction(function () use ($levelId, $items) {
-            foreach ($items as $it) {
-                AccessControlMatrix::updateOrCreate(
-                    [
-                        'user_level_id' => $levelId,
-                        'menu_id'       => (int) $it['menu_id'],
-                    ],
-                    [
-                        'view'    => (bool) $it['view'],
-                        'add'     => (bool) $it['add'],
-                        'edit'    => (bool) $it['edit'],
-                        'delete'  => (bool) $it['delete'],
-                        'approve' => (bool) $it['approve'],
-                    ]
-                );
+        foreach ($data['items'] as $i => $it) {
+            if (empty($it['menu_id']) && empty($it['menu_key'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Item index $i tidak memiliki menu_id atau menu_key",
+                ], 422);
             }
-        });
+        }
 
-        $result = AccessControlMatrix::where('user_level_id', $levelId)->get();
+        DB::transaction(function () use ($data) {
+            AccessControlMatrix::syncForLevel((int) $data['user_level_id'], $data['items']);
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'Permission tersinkron',
-            'data'    => $result,
+            'message' => 'Bulk store permissions berhasil',
+            'count' => count($data['items']),
+        ], 200);
+    }
+
+    /**
+     * BULK UPDATE (PUT /access_control_matrices/bulk)
+     * Semantik sama dengan storeBulk (upsert).
+     */
+    public function updateBulk(Request $request)
+    {
+        // Gunakan validasi & implementasi yang sama (upsert)
+        return $this->storeBulk($request);
+    }
+
+    // (Opsional) stats jika kamu pakai
+    public function stats()
+    {
+        $total = AccessControlMatrix::count();
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total' => $total,
+            ],
         ]);
     }
 }

@@ -17,7 +17,7 @@ class JwtEnsureType
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $typ = $payload['typ'] ?? null;
+        $typ = $payload->get('typ'); // ✅ pakai get()
         if ($typ !== $required) {
             return response()->json(['message' => 'Invalid token type'], 403);
         }
@@ -25,15 +25,16 @@ class JwtEnsureType
         // sisipkan konteks umum
         if ($typ === 'company') {
             $request->merge([
-                'company_id' => (string) ($payload['company_id'] ?? ''),
+                'company_id' => (string) ($payload->get('company_id') ?: $payload->get('sub')),
                 '_jwt_typ'   => 'company',
             ]);
         }
+
         if ($typ === 'user') {
             $request->merge([
-                'company_id' => (string) ($payload['company_id'] ?? ''),
-                'level_id'   => (string) ($payload['level_id'] ?? ''),
-                'perms'      => $payload['perms'] ?? [],
+                'company_id' => (string) ($payload->get('company_id') ?: ''),
+                'level_id'   => (string) ($payload->get('level_id') ?: ''),
+                'perms'      => $payload->get('perms') ?: [],
                 '_jwt_typ'   => 'user',
             ]);
         }

@@ -1,4 +1,5 @@
 export const API_URL = "http://localhost:8000/api";
+import { authHeaders } from "@/lib/auth-tokens";
 
 /* ========== Helpers ========== */
 function isFileLike(v: any) {
@@ -423,4 +424,169 @@ export function getExportPdfUrl(
     return `${API_URL}/pdf/${entityPlural}${
         qs.toString() ? `?${qs.toString()}` : ""
     }`;
+}
+
+export async function saveAccessControlMatrixBulk(
+    userLevelId: string | number,
+    rows: {
+        id: string | number;
+        view: boolean;
+        add: boolean;
+        edit: boolean;
+        delete: boolean;
+        approve: boolean;
+    }[]
+) {
+    const items = rows.map((r) => {
+        const isNumeric =
+            typeof r.id === "number" || /^[0-9]+$/.test(String(r.id));
+        return isNumeric
+            ? {
+                  menu_id: Number(r.id),
+                  view: !!r.view,
+                  add: !!r.add,
+                  edit: !!r.edit,
+                  delete: !!r.delete,
+                  approve: !!r.approve,
+              }
+            : {
+                  menu_key: String(r.id),
+                  view: !!r.view,
+                  add: !!r.add,
+                  edit: !!r.edit,
+                  delete: !!r.delete,
+                  approve: !!r.approve,
+              };
+    });
+
+    const payload = { user_level_id: userLevelId, items };
+
+    const res = await fetch(`${API_URL}/access_control_matrices/bulk`, {
+        method: "POST", // atau PUT—keduanya ditangani sama di backend (upsert)
+        headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+        let msg = await res.text().catch(() => "");
+        try {
+            const j = JSON.parse(msg);
+            msg = j.message || msg;
+        } catch {}
+        throw new Error(msg || "Gagal menyimpan izin (bulk).");
+    }
+    return res.json();
+}
+
+/** pastikan path selalu diawali "/" */
+function withLeadingSlash(path: string) {
+    if (!path) return "/";
+    return path.startsWith("/") ? path : `/${path}`;
+}
+
+/** Normalisasi URL supaya tidak jadi "/api/api/..." dan tidak ada double slash */
+function normalizeApiPath(path: string) {
+    // Jika sudah full URL, jangan diprefix ulang
+    if (/^https?:\/\//i.test(path)) return path;
+
+    // Buang trailing slash pada API_URL
+    const base = API_URL.replace(/\/+$/, "");
+    // Pastikan path diawali slash tunggal
+    let p = withLeadingSlash(path);
+
+    // Jika base berakhiran "/api" dan path juga diawali "/api/", hapus "/api" di depan path
+    const ENDS_WITH_API = base.toLowerCase().endsWith("/api");
+    const STARTS_WITH_API = p.toLowerCase().startsWith("/api/");
+    if (ENDS_WITH_API && STARTS_WITH_API) {
+        p = p.slice(4); // buang "/api" di depan path
+    }
+
+    // Karena base sudah tanpa trailing slash dan p sudah diawali satu slash, cukup gabungkan
+    return `${base}${p}`;
+}
+
+type ApiTyp = "company" | "user";
+
+export async function apiFetch(
+    path: string,
+    init: RequestInit = {},
+    typ?: ApiTyp
+) {
+    const isJsonBody =
+        !!init.body &&
+        typeof init.body === "string" &&
+        (init.headers as any)?.["Content-Type"] !==
+            "application/x-www-form-urlencoded" &&
+        (init.headers as any)?.["Content-Type"] !== "multipart/form-data";
+
+    const baseHeaders: HeadersInit = {
+        Accept: "application/json",
+        ...(isJsonBody ? { "Content-Type": "application/json" } : {}),
+    };
+
+    const hdrFromInit = init.headers ?? {};
+    const hdrFromAuth = typ ? authHeaders(typ) : {};
+
+    const headers: HeadersInit = {
+        ...baseHeaders,
+        ...(typeof hdrFromInit === "object" ? hdrFromInit : {}),
+        ...hdrFromAuth,
+    };
+
+    const url = normalizeApiPath(path);
+
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 15000);
+
+    const doFetch = async () =>
+        fetch(url, {
+            mode: "cors",
+            cache: "no-store",
+            ...init,
+            headers,
+            signal: ac.signal,
+            credentials: "same-origin",
+        });
+
+    let res: Response;
+    try {
+        res = await doFetch();
+    } catch {
+        try {
+            res = await doFetch(); // retry sekali untuk error jaringan
+        } catch (err) {
+            clearTimeout(t);
+            throw err;
+        }
+    }
+    clearTimeout(t);
+
+    if (!res) throw new Error("Network error: empty response from server");
+
+    if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+            const text = await res.text();
+            if (text) {
+                try {
+                    const j = JSON.parse(text);
+                    msg = j.message ?? j.error ?? text ?? msg;
+                } catch {
+                    msg = text;
+                }
+            }
+        } catch {}
+        const err = new Error(msg);
+        (err as any).status = res.status;
+        throw err;
+    }
+
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) {
+        return res.json();
+    }
+    return res; // non-JSON (file, dsb.)
 }

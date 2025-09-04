@@ -123,7 +123,7 @@ function GroupHeader({ name, color }: { name: string; color?: string }) {
 }
 
 /* ====== Sumber data menu (JANGAN DIUBAH) – generator isi di sini ====== */
-const menuItems: any = [
+export const menuItems: any = [
     {
         id: "booking-order",
         icon: BookOpen,
@@ -1303,7 +1303,7 @@ const menuItems: any = [
             {
                 icon: Users,
                 labelKey: "Daftar Role" as any,
-                href: "/daftar-role",
+                href: "/level-user",
             },
             {
                 icon: Plus,
@@ -1323,7 +1323,7 @@ const menuItems: any = [
             {
                 icon: Clipboard,
                 labelKey: "Otorisasi Menu" as any,
-                href: "/otorisasi-menu",
+                href: "/access-control-matrix",
             },
             { icon: Users, labelKey: "Per Role" as any, href: "/per-role" },
             { icon: Factory, labelKey: "Per Menu" as any, href: "/per-menu" },
@@ -1335,7 +1335,7 @@ const menuItems: any = [
             {
                 icon: Users,
                 labelKey: "Daftar Pengguna" as any,
-                href: "/daftar-pengguna",
+                href: "/user-management",
             },
             {
                 icon: Plus,
@@ -1389,7 +1389,7 @@ const menuItems: any = [
                 icon: Users,
                 label: "Level Pengguna",
                 items: [
-                    { icon: Users, label: "Daftar Role", href: "/daftar-role" },
+                    { icon: Users, label: "Daftar Role", href: "/level-user" },
                     {
                         icon: Plus,
                         label: "Tambah/Edit Role",
@@ -1410,7 +1410,7 @@ const menuItems: any = [
                     {
                         icon: Clipboard,
                         label: "Otorisasi Menu",
-                        href: "/otorisasi-menu",
+                        href: "/access-control-matrix",
                     },
                     { icon: Users, label: "Per Role", href: "/per-role" },
                     { icon: Factory, label: "Per Menu", href: "/per-menu" },
@@ -1424,7 +1424,7 @@ const menuItems: any = [
                     {
                         icon: Users,
                         label: "Daftar Pengguna",
-                        href: "/daftar-pengguna",
+                        href: "/user-management",
                     },
                     {
                         icon: Plus,

@@ -8,8 +8,8 @@ use App\Models\UserManagement;
 use App\Models\AccessControlMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Tymon\JWTAuth\Facades\JWTAuth;          // ⬅️ pakai Tymon
-use Tymon\JWTAuth\Exceptions\JWTException;  // (opsional) kalau mau tangkap spesifik
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Tymon\JWTAuth\Exceptions\JWTException;
 
 class AuthController extends Controller
 {
@@ -29,13 +29,12 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid company credentials'], 401);
         }
 
-        // Token dengan klaim khusus
+        // Token ringan: tanpa perms
         $token = JWTAuth::fromUser($company, [
             'typ'        => 'company',
             'company_id' => (string) $company->id,
         ]);
 
-        // TTL pakai config('jwt.ttl') (menit)
         $ttlSeconds = config('jwt.ttl') ? config('jwt.ttl') * 60 : null;
 
         return response()->json([
@@ -55,10 +54,17 @@ class AuthController extends Controller
     {
         try {
             $payload = JWTAuth::parseToken()->getPayload();
-            if (($payload['typ'] ?? null) !== 'company') {
+            $typ = $payload->get('typ');
+            if ($typ !== null && $typ !== 'company') {
                 return response()->json(['message' => 'Invalid token type'], 403);
             }
-            $company = JWTAuth::parseToken()->authenticate();
+
+            $companyId = (string) ($payload->get('company_id') ?: $payload->get('sub'));
+            if ($companyId === '' || !Company::whereKey($companyId)->exists()) {
+                return response()->json(['message' => 'Invalid company context'], 401);
+            }
+
+            $company = Company::find($companyId);
             return response()->json($company);
         } catch (\Throwable $e) {
             return response()->json(['message' => 'Unauthorized'], 401);
@@ -72,14 +78,15 @@ class AuthController extends Controller
      */
     public function userLogin(Request $request)
     {
-        // Ambil & validasi company_token
+        // Validasi & ambil konteks company dari token perusahaan
         try {
             $payload = JWTAuth::parseToken()->getPayload();
-            if (($payload['typ'] ?? null) !== 'company') {
+            $typ = $payload->get('typ');
+            if ($typ !== null && $typ !== 'company') {
                 return response()->json(['message' => 'Invalid company token'], 401);
             }
-            $companyId = (string) ($payload['company_id'] ?? '');
-            if ($companyId === '') {
+            $companyId = (string) ($payload->get('company_id') ?: $payload->get('sub'));
+            if ($companyId === '' || !Company::whereKey($companyId)->exists()) {
                 return response()->json(['message' => 'Invalid company context'], 401);
             }
         } catch (\Throwable $e) {
@@ -113,8 +120,9 @@ class AuthController extends Controller
             }
         }
 
-        // Build permissions sesuai level user
         $levelId = $user->role;
+
+        // Ambil permissions untuk FE (JANGAN masukin ke token)
         $perms = AccessControlMatrix::query()
             ->where('user_level_id', $levelId)
             ->get(['menu_id','view','add','edit','delete','approve'])
@@ -125,17 +133,15 @@ class AuthController extends Controller
                 'edit'    => (bool) $r->edit,
                 'delete'  => (bool) $r->delete,
                 'approve' => (bool) $r->approve,
-            ])
-            ->values()
-            ->toArray();
+            ])->values()->toArray();
 
+        // Token ringan (klaim kecil saja)
         $claims = [
             'typ'        => 'user',
             'company_id' => $companyId,
             'level_id'   => $levelId,
-            'perms'      => $perms, // opsional
+            // HAPUS 'perms' dari klaim agar header tidak bengkak
         ];
-
         $token = JWTAuth::claims($claims)->fromUser($user);
 
         return response()->json([
@@ -148,6 +154,8 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'level' => $levelId,
             ],
+            // kirim perms untuk FE simpan di localStorage (bukan di token)
+            'perms'      => $perms,
         ]);
     }
 
@@ -159,24 +167,34 @@ class AuthController extends Controller
     {
         try {
             $payload = JWTAuth::parseToken()->getPayload();
-            if (($payload['typ'] ?? null) !== 'user') {
+            $typ = $payload->get('typ');
+            if ($typ !== null && $typ !== 'user') {
                 return response()->json(['message' => 'Invalid token type'], 403);
             }
-            $user = JWTAuth::parseToken()->authenticate();
+
+            // Hindari masalah guard dengan fallback manual
+            $user = null;
+            try {
+                $user = JWTAuth::parseToken()->authenticate();
+            } catch (\Throwable $e) {
+                $userId = $payload->get('sub');
+                if ($userId) $user = UserManagement::find($userId);
+            }
+            if (!$user) return response()->json(['message' => 'User not found'], 404);
+
             return response()->json($user);
-    } catch (\Throwable $e) {
+        } catch (\Throwable $e) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
     }
 
     /**
-     * POST /auth/logout
-     * Header: Authorization: Bearer <company_token | user_token>
+     * POST /auth/logout (dipisah untuk company/user di routes)
      */
     public function logout()
     {
         try {
-            JWTAuth::parseToken()->invalidate();
+            JWTAuth::parseToken()->invalidate(true);
             return response()->json(['success' => true, 'message' => 'Logged out']);
         } catch (\Throwable $e) {
             return response()->json(['message' => 'Unauthorized'], 401);
@@ -185,12 +203,11 @@ class AuthController extends Controller
 
     /**
      * POST /auth/refresh
-     * Header: Authorization: Bearer <company_token | user_token>
      */
     public function refresh()
     {
         try {
-            $new = JWTAuth::parseToken()->refresh();
+            $new = JWTAuth::parseToken()->refresh(true, true);
             $payload = JWTAuth::setToken($new)->getPayload();
 
             return response()->json([
