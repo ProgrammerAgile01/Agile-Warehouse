@@ -22,20 +22,64 @@ class MenuController extends Controller
         return response()->json(['success' => true, 'data' => $q->orderBy('order_number')->get()]);
     }
 
-    // GET /api/menus/tree?product_code=RENTVIX
-    public function tree(Request $req)
-    {
-        $productCode = $req->query('product_code');
+ 
+   public function tree(Request $req)
+{
+    $q = Menu::query();
 
-        $roots = Menu::query()
-            ->forProduct($productCode)
-            ->whereNull('parent_id')
-            ->with(['recursiveChildren' => fn($q) => $q->orderBy('order_number')])
-            ->orderBy('order_number')
-            ->get();
-
-        return response()->json(['success' => true, 'data' => $roots]);
+    if ($pc = $req->query('product_code')) {
+        $q->forProduct($pc);
     }
+    if (!$req->boolean('include_inactive')) {
+        $q->active();
+    }
+
+    $roots = $q->whereNull('parent_id')
+        ->orderBy('order_number')
+        ->with(['recursiveChildren'])
+        ->get();
+
+    /** @var callable|null $mapNode */
+    $mapNode = null; // <-- pre-declare agar analyzer tidak protes
+  // Map ke bentuk tree generik { id, title, type, children:[] }
+$mapNode = function (Menu $m) use (&$mapNode) {
+    $rawType = strtolower($m->type ?? '');
+
+    // Akui 'submenu' sebagai kontainer juga
+    if (in_array($rawType, ['group', 'module', 'menu', 'submenu'], true)) {
+        $type = $rawType === 'submenu' ? 'module' : $rawType;
+    } else {
+        // fallback by level
+        $lvl = (int) ($m->level ?? 0);
+        $type = ($lvl <= 0)
+            ? 'group'
+            : ($lvl === 1 ? 'module' : 'menu');
+    }
+
+    return [
+        'id'         => $m->id,
+        'title'      => $m->title,
+        'type'       => $type,               // <-- sekarang 'submenu' jadi 'module'
+        'route_path' => $m->route_path,
+        'icon'       => $m->icon,
+        'color'      => $m->color,
+        'children'   => $m->recursiveChildren
+            ? $m->recursiveChildren->map(fn($c) => $mapNode($c))->values()->all()
+            : [],
+    ];
+};
+
+
+    $data = $roots->map(fn (Menu $m) => $mapNode($m))->values()->all();
+
+    return response()->json([
+        'success' => true,
+        'data'    => $data,
+    ]);
+}
+
+
+
 
     public function store(Request $req)
     {
@@ -149,4 +193,5 @@ class MenuController extends Controller
 
         return response()->json(['success' => true]);
     }
+    
 }

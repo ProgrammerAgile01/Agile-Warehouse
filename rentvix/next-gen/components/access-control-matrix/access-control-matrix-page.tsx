@@ -15,8 +15,7 @@ import {
     type MenuNode,
 } from "./access-control-matrix-page-contents";
 import { useToast } from "@/hooks/use-toast";
-import { AppSidebar, menuItems as sidebarMenuItems } from "../app-sidebar";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "../ui/sidebar";
+import { SidebarTrigger } from "../ui/sidebar";
 import {
     Breadcrumb,
     BreadcrumbItem,
@@ -26,181 +25,121 @@ import {
     BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "../ui/separator";
-import { fetchData, saveAccessControlMatrixBulk } from "@/lib/api";
+import {
+    fetchData,
+    fetchMenusTree,
+    saveAccessControlMatrixBulk,
+} from "@/lib/api";
 
-/* ===== Bangun tree (Group -> Module -> Menu) dari AppSidebar ===== */
-function buildTreeFromSidebar(): GroupNode[] {
-    const arr = Array.isArray(sidebarMenuItems)
-        ? (sidebarMenuItems as any[])
-        : [];
-    const groupMap = new Map<string, GroupNode>();
+/* ====== Mapper: response /menus/tree -> GroupNode/ModuleNode/MenuNode ====== */
+/** Bentuk node yang datang dari API (fleksibel) */
+type ApiMenuNode = {
+    id: number | string;
+    title: string;
+    type?: string; // "group" | "module" | "menu"
+    level?: number; // fallback penentu tipe
+    children?: ApiMenuNode[];
+};
 
-    const norm = (s: any) =>
-        String(s ?? "")
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .trim();
+function mapMenusApiToTreeNodes(apiRoots: ApiMenuNode[]): GroupNode[] {
+    // Normalisasi type berdasarkan field "type" atau fallback "level"
+    const normalizeType = (node: ApiMenuNode): "group" | "module" | "menu" => {
+        const t = String(node.type ?? "").toLowerCase();
+        if (t === "group" || t === "module" || t === "menu") return t as any;
+        const lvl = typeof node.level === "number" ? node.level : 0;
+        if (lvl <= 0) return "group";
+        if (lvl === 1) return "module";
+        return "menu";
+    };
 
-    for (const mod of arr) {
-        const gid = String(mod.groupId ?? mod.groupName ?? "0");
-        const gLabel = String(mod.groupName ?? "Kelompok");
+    // Rekursif
+    const walk = (n: ApiMenuNode): GroupNode | ModuleNode | MenuNode => {
+        const t = normalizeType(n);
+        const label = String(n.title ?? "Menu");
 
-        if (!groupMap.has(gid)) {
-            groupMap.set(gid, {
-                type: "group",
-                id: gid,
-                label: gLabel,
-                children: [],
-            });
+        if (t === "menu") {
+            const leaf: MenuNode = { type: "menu", id: String(n.id), label };
+            return leaf;
         }
-        const g = groupMap.get(gid)!;
 
-        const baseModule: ModuleNode = {
+        const children = Array.isArray(n.children) ? n.children.map(walk) : [];
+
+        if (t === "group") {
+            const g: GroupNode = {
+                type: "group",
+                id: String(n.id),
+                label,
+                children: [] as ModuleNode[],
+            };
+            // Anak group bisa module/menu—pastikan semua module; jika ada "menu" langsung di bawah group,
+            // bungkus ke pseudo module bernama label group (agar UI tetap konsisten)
+            const modules: ModuleNode[] = [];
+            const looseMenus: MenuNode[] = [];
+            for (const ch of children) {
+                if ((ch as any).type === "module")
+                    modules.push(ch as ModuleNode);
+                else if ((ch as any).type === "menu")
+                    looseMenus.push(ch as MenuNode);
+            }
+            if (looseMenus.length) {
+                modules.unshift({
+                    type: "module",
+                    id: `${n.id}::_auto`,
+                    label,
+                    children: looseMenus,
+                });
+            }
+            g.children = modules;
+            return g;
+        }
+
+        // module
+        const m: ModuleNode = {
             type: "module",
-            id: String(mod.id),
-            label: String(mod.labelKey ?? mod.label ?? "Modul"),
+            id: String(n.id),
+            label,
             children: [],
         };
+        // anak module bisa: module lanjutan (submodule) atau menu
+        m.children = children as any;
+        return m;
+    };
 
-        const pushMenu = (container: ModuleNode, rawId: any, rawLabel: any) => {
-            const label = String(rawLabel ?? "Menu");
-            const id = String(rawId ?? `${container.id}::${label}`);
-            container.children.push({ type: "menu", id, label });
-        };
+    const roots = apiRoots.map(walk);
 
-        const moduleLabelNorm = norm(mod.labelKey ?? mod.label ?? "Modul");
-        const nestedArr = Array.isArray(mod.nestedItems) ? mod.nestedItems : [];
-        const sameLabelNested = nestedArr.find(
-            (ni: any) =>
-                norm(ni.label ?? ni.labelKey ?? "Sub Modul") === moduleLabelNorm
-        );
-
-        const nestedLabelSet = new Set<string>();
-        for (const ni of nestedArr) {
-            for (const sit of ni.items ?? []) {
-                nestedLabelSet.add(
-                    norm(sit.label ?? sit.labelKey ?? sit.href ?? "Menu")
-                );
-            }
-        }
-
-        if (Array.isArray(mod.items)) {
-            for (const it of mod.items) {
-                const label = String(
-                    it.label ?? it.labelKey ?? it.href ?? "Menu"
-                );
-                const key = norm(label);
-                if (nestedLabelSet.has(key)) continue;
-                pushMenu(
-                    baseModule,
-                    it.id ?? `${mod.id}::${it.labelKey ?? it.label ?? it.href}`,
-                    label
-                );
-            }
-        }
-
-        if (sameLabelNested) {
-            baseModule.label = String(
-                sameLabelNested.label ??
-                    sameLabelNested.labelKey ??
-                    baseModule.label
-            );
-            const seen = new Set<string>(
-                baseModule.children.map((m) => norm((m as any).label))
-            );
-            for (const sit of sameLabelNested.items ?? []) {
-                const lbl = String(
-                    sit.label ?? sit.labelKey ?? sit.href ?? "Menu"
-                );
-                const key = norm(lbl);
-                if (seen.has(key)) continue;
-                seen.add(key);
-                pushMenu(
-                    baseModule,
-                    sit.id ??
-                        `${mod.id}::${sameLabelNested.id}::${
-                            sit.labelKey ?? sit.label ?? sit.href
-                        }`,
-                    lbl
-                );
-            }
-
-            for (const ni of nestedArr) {
-                if (ni === sameLabelNested) continue;
-                const subModule: ModuleNode = {
-                    type: "module",
-                    id: String(`${mod.id}::${ni.id}`),
-                    label: String(ni.label ?? ni.labelKey ?? "Sub Modul"),
-                    children: [],
-                };
-                const seenSub = new Set<string>();
-                for (const sit of ni.items ?? []) {
-                    const lbl = String(
-                        sit.label ?? sit.labelKey ?? sit.href ?? "Menu"
-                    );
-                    const key = norm(lbl);
-                    if (seenSub.has(key)) continue;
-                    seenSub.add(key);
-                    pushMenu(
-                        subModule,
-                        sit.id ??
-                            `${mod.id}::${ni.id}::${
-                                sit.labelKey ?? sit.label ?? sit.href
-                            }`,
-                        lbl
-                    );
-                }
-                baseModule.children.push(subModule);
-            }
-        } else {
-            for (const ni of nestedArr) {
-                const subModule: ModuleNode = {
-                    type: "module",
-                    id: String(`${mod.id}::${ni.id}`),
-                    label: String(ni.label ?? ni.labelKey ?? "Sub Modul"),
-                    children: [],
-                };
-                const seenSub = new Set<string>();
-                for (const sit of ni.items ?? []) {
-                    const lbl = String(
-                        sit.label ?? sit.labelKey ?? sit.href ?? "Menu"
-                    );
-                    const key = norm(lbl);
-                    if (seenSub.has(key)) continue;
-                    seenSub.add(key);
-                    pushMenu(
-                        subModule,
-                        sit.id ??
-                            `${mod.id}::${ni.id}::${
-                                sit.labelKey ?? sit.label ?? sit.href
-                            }`,
-                        lbl
-                    );
-                }
-                baseModule.children.push(subModule);
-            }
-        }
-
-        g.children.push(baseModule);
+    // hanya ambil GroupNode di root; jika API mengembalikan module/menu di root, bungkus ke group default
+    const groups: GroupNode[] = [];
+    const orphans: (ModuleNode | MenuNode)[] = [];
+    for (const r of roots) {
+        if ((r as any).type === "group") groups.push(r as GroupNode);
+        else orphans.push(r as any);
+    }
+    if (orphans.length) {
+        groups.unshift({
+            type: "group",
+            id: "_ungrouped",
+            label: "Ungrouped",
+            children: orphans.map((x, i) =>
+                (x as any).type === "module"
+                    ? (x as ModuleNode)
+                    : ({
+                          type: "module",
+                          id: `_ung_${i}`,
+                          label: (x as MenuNode).label,
+                          children: [x as MenuNode],
+                      } as ModuleNode)
+            ),
+        });
     }
 
-    const groups = Array.from(groupMap.values());
-    groups.forEach((gg) => {
-        gg.children = gg.children.sort((a, b) =>
-            a.label.localeCompare(b.label)
-        );
-        gg.children.forEach((m) => {
-            const mod = m as ModuleNode;
-            mod.children.sort((a: any, b: any) =>
+    // urut label supaya rapi
+    groups.forEach((g) => {
+        g.children.sort((a, b) => a.label.localeCompare(b.label));
+        g.children.forEach((m) => {
+            // jika submodule -> urutkan
+            (m.children as any[])?.sort?.((a: any, b: any) =>
                 a.label.localeCompare(b.label)
             );
-            mod.children.forEach((c: any) => {
-                if (c?.type === "module" && Array.isArray(c.children)) {
-                    c.children.sort((x: any, y: any) =>
-                        x.label.localeCompare(y.label)
-                    );
-                }
-            });
         });
     });
     return groups.sort((a, b) => a.label.localeCompare(b.label));
@@ -221,16 +160,19 @@ export function AccessControlMatrixPage() {
     const [rawMatrix, setRawMatrix] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
 
-    const tree = useMemo(buildTreeFromSidebar, []);
+    // === Tree dari API (mst_menus) ===
+    const [tree, setTree] = useState<GroupNode[]>([]);
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-    // Load levels & matrix
+    // Load levels, matrix, dan tree menu
     useEffect(() => {
         (async () => {
             try {
-                const [lvls, matrix] = await Promise.all([
+                const [lvls, matrix, menus] = await Promise.all([
                     fetchData("level_users"),
                     fetchData("access_control_matrices"),
+                    // opsional: pass product_code kalau mau filter per produk
+                    fetchMenusTree(/* { product_code: "RENTVIX" } */),
                 ]);
 
                 const normalizedLevels = (lvls || []).map((x: any) => ({
@@ -242,24 +184,30 @@ export function AccessControlMatrixPage() {
                 setLevels(normalizedLevels);
                 setRawMatrix(Array.isArray(matrix) ? matrix : []);
 
+                // Map menus ke tree
+                const apiNodes = Array.isArray(menus) ? menus : [];
+                setTree(mapMenusApiToTreeNodes(apiNodes));
+
                 const firstActive = normalizedLevels.find(
                     (l: any) => String(l.status ?? "").toLowerCase() === "aktif"
                 );
                 setSelectedLevelId(
                     firstActive?.id ?? normalizedLevels[0]?.id ?? null
                 );
-            } catch {
+            } catch (err: any) {
                 toast({
                     title: "Gagal Memuat Data",
-                    description:
-                        "Terjadi kesalahan saat mengambil data dari server",
+                    description: String(
+                        err?.message ??
+                            "Terjadi kesalahan saat mengambil data dari server"
+                    ),
                     variant: "destructive",
                 });
             }
         })();
     }, [toast]);
 
-    // Kumpulkan semua leaf-menu
+    // Kumpulkan semua leaf-menu (dari tree)
     const allMenusFlat = useMemo(() => {
         type AnyNode = GroupNode | ModuleNode | MenuNode;
         const res: { id: string; label: string }[] = [];
@@ -345,6 +293,8 @@ export function AccessControlMatrixPage() {
             if (idx === -1) {
                 next.push({
                     user_level_id: selectedLevelId,
+                    // karena menu dari DB (numeric), id kemungkinan numeric -> akan dikirim sebagai menu_id saat saveBulk
+                    // untuk konsistensi di memori, simpan di menu_key juga tidak masalah, backend upsert menangani keduanya
                     menu_key: String(id),
                     view: false,
                     add: false,
@@ -401,6 +351,7 @@ export function AccessControlMatrixPage() {
         if (!selectedLevelId) return;
         if (!rows.length) return;
 
+        // saveAccessControlMatrixBulk akan otomatis kirim menu_id (numeric) atau menu_key (string)
         const res = await saveAccessControlMatrixBulk(
             String(selectedLevelId),
             rows
@@ -424,7 +375,6 @@ export function AccessControlMatrixPage() {
         <>
             {/* Top bar / Breadcrumb */}
             <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                {/* Terlihat di light mode */}
                 <SidebarTrigger className="-ml-1 h-7 w-7 border border-border text-foreground hover:bg-accent hover:text-foreground dark:border-white/30" />
                 <Separator orientation="vertical" className="mr-2 h-4" />
                 <Breadcrumb className="min-w-0">

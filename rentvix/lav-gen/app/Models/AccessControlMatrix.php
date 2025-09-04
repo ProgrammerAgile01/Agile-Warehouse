@@ -49,43 +49,54 @@ class AccessControlMatrix extends Model
     /**
      * Helper sinkron massal (flex: menu_id atau menu_key).
      */
-    public static function syncForLevel(int $levelId, array $rows): void
-    {
-        $now = now();
-        $payload = array_map(function ($r) use ($levelId, $now) {
-            $menuId = array_key_exists('menu_id', $r) ? (int) $r['menu_id'] : null;
-            $menuKey = array_key_exists('menu_key', $r) ? (string) $r['menu_key'] : null;
+   public static function syncForLevel(int $levelId, array $rows): void
+{
+    $now = now();
 
-            return [
-                'user_level_id' => $levelId,
-                'menu_id' => $menuId,
-                'menu_key' => $menuKey,
-                'view' => (bool) ($r['view'] ?? false),
-                'add' => (bool) ($r['add'] ?? false),
-                'edit' => (bool) ($r['edit'] ?? false),
-                'delete' => (bool) ($r['delete'] ?? false),
-                'approve' => (bool) ($r['approve'] ?? false),
-                'updated_at' => $now,
-                'created_at' => $now,
-            ];
-        }, $rows);
+    // Bentuk payload minimal (tanpa kolom yang tidak dipakai)
+    $byId  = [];
+    $byKey = [];
 
-        $byId = array_values(array_filter($payload, fn($p) => !empty($p['menu_id'])));
-        $byKey = array_values(array_filter($payload, fn($p) => !empty($p['menu_key'])));
+    foreach ($rows as $r) {
+        $menuId  = array_key_exists('menu_id',  $r) ? (int)   $r['menu_id']  : null;
+        $menuKey = array_key_exists('menu_key', $r) ? (string)$r['menu_key'] : null;
 
-        if ($byId) {
-            static::upsert(
-                $byId,
-                ['user_level_id', 'menu_id'],
-                ['view', 'add', 'edit', 'delete', 'approve', 'updated_at']
-            );
+        $common = [
+            'user_level_id' => $levelId,
+            'view'    => (bool)($r['view'] ?? false),
+            'add'     => (bool)($r['add'] ?? false),
+            'edit'    => (bool)($r['edit'] ?? false),
+            'delete'  => (bool)($r['delete'] ?? false),
+            'approve' => (bool)($r['approve'] ?? false),
+            'updated_at' => $now,
+            'created_at' => $now,
+        ];
+
+        if (!empty($menuId)) {
+            // HANYA sertakan menu_id, JANGAN sertakan menu_key
+            $byId[] = $common + ['menu_id' => $menuId];
+        } elseif (!empty($menuKey)) {
+            // HANYA sertakan menu_key, JANGAN sertakan menu_id
+            $byKey[] = $common + ['menu_key' => $menuKey];
         }
-        if ($byKey) {
-            static::upsert(
-                $byKey,
-                ['user_level_id', 'menu_key'],
-                ['view', 'add', 'edit', 'delete', 'approve', 'updated_at']
-            );
-        }
+        // Kalau dua-duanya kosong, sudah disaring di controller sebelumnya
     }
+
+    if ($byId) {
+        static::upsert(
+            $byId,
+            ['user_level_id', 'menu_id'],
+            ['view', 'add', 'edit', 'delete', 'approve', 'updated_at']
+        );
+    }
+
+    if ($byKey) {
+        static::upsert(
+            $byKey,
+            ['user_level_id', 'menu_key'],
+            ['view', 'add', 'edit', 'delete', 'approve', 'updated_at']
+        );
+    }
+}
+
 }

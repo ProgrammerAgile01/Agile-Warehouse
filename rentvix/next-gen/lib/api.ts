@@ -590,3 +590,34 @@ export async function apiFetch(
     }
     return res; // non-JSON (file, dsb.)
 }
+
+// Ambil tree menu dari backend (sudah ada versi kamu—pakai ini kalau belum)
+export async function fetchMenusTree(params?: {
+    product_code?: string;
+    include_inactive?: boolean;
+}) {
+    const url = new URL(`${API_URL}/menus/tree`);
+    if (params?.product_code)
+        url.searchParams.set("product_code", params.product_code);
+    if (params?.include_inactive) url.searchParams.set("include_inactive", "1");
+
+    const res = await fetch(url.toString(), {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return parseError(res);
+    const j = await res.json();
+    return Array.isArray(j) ? j : j.data ?? [];
+}
+
+// Ambil semua ACM lalu saring di FE untuk level tertentu (paling cepat tanpa ubah backend)
+export async function fetchPermsForLevel(levelId: string | number) {
+    const res = await fetch(`${API_URL}/access_control_matrices`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return parseError(res);
+    const j = await res.json();
+    const rows = Array.isArray(j) ? j : j.data ?? [];
+    return rows.filter((r: any) => String(r.user_level_id) === String(levelId));
+}
