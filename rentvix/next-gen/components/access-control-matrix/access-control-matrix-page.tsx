@@ -13,6 +13,7 @@ import {
     type GroupNode,
     type ModuleNode,
     type MenuNode,
+    // kita pakai SubmenuNode juga
 } from "./access-control-matrix-page-contents";
 import { useToast } from "@/hooks/use-toast";
 import { SidebarTrigger } from "../ui/sidebar";
@@ -31,118 +32,109 @@ import {
     saveAccessControlMatrixBulk,
 } from "@/lib/api";
 
-/* ====== Mapper: response /menus/tree -> GroupNode/ModuleNode/MenuNode ====== */
-/** Bentuk node yang datang dari API (fleksibel) */
+/* ====== Types dari API tree ====== */
 type ApiMenuNode = {
     id: number | string;
     title: string;
-    type?: string; // "group" | "module" | "menu"
-    level?: number; // fallback penentu tipe
+    type?: string; // "group" | "module" | "menu" | "submenu"
+    level?: number; // fallback
     children?: ApiMenuNode[];
 };
 
-function mapMenusApiToTreeNodes(apiRoots: ApiMenuNode[]): GroupNode[] {
-    // Normalisasi type berdasarkan field "type" atau fallback "level"
-    const normalizeType = (node: ApiMenuNode): "group" | "module" | "menu" => {
-        const t = String(node.type ?? "").toLowerCase();
-        if (t === "group" || t === "module" || t === "menu") return t as any;
-        const lvl = typeof node.level === "number" ? node.level : 0;
+/* ====== Normalisasi boolean ====== */
+const asBool = (v: any) => v === true || v === 1 || v === "1";
+
+/* ====== Mapper: pastikan SEMUA id leaf numerik ====== */
+type SubmenuNode = { type: "submenu"; id: number; label: string };
+type MMenuNode = {
+    type: "menu";
+    id: number;
+    label: string;
+    children?: SubmenuNode[];
+};
+type MModuleNode = {
+    type: "module";
+    id: number;
+    label: string;
+    children: Array<MMenuNode | MModuleNode>;
+};
+type MGroupNode = {
+    type: "group";
+    id: number;
+    label: string;
+    children: MModuleNode[];
+};
+
+const toNum = (v: number | string): number => Number(String(v).trim());
+
+function mapMenusApiToTreeNodes(apiRoots: ApiMenuNode[]): MGroupNode[] {
+    const normalizeType = (
+        n: ApiMenuNode
+    ): "group" | "module" | "menu" | "submenu" => {
+        const t = String(n.type ?? "").toLowerCase();
+        if (t === "group" || t === "module" || t === "menu" || t === "submenu")
+            return t as any;
+        const lvl = typeof n.level === "number" ? n.level : 0;
         if (lvl <= 0) return "group";
         if (lvl === 1) return "module";
-        return "menu";
+        if (lvl === 2) return "menu";
+        return "submenu";
     };
 
-    // Rekursif
-    const walk = (n: ApiMenuNode): GroupNode | ModuleNode | MenuNode => {
+    const walk = (
+        n: ApiMenuNode
+    ): MGroupNode | MModuleNode | MMenuNode | SubmenuNode => {
         const t = normalizeType(n);
+        const id = toNum(n.id);
         const label = String(n.title ?? "Menu");
 
+        if (t === "submenu") return { type: "submenu", id, label };
+
         if (t === "menu") {
-            const leaf: MenuNode = { type: "menu", id: String(n.id), label };
-            return leaf;
-        }
-
-        const children = Array.isArray(n.children) ? n.children.map(walk) : [];
-
-        if (t === "group") {
-            const g: GroupNode = {
-                type: "group",
-                id: String(n.id),
+            const children = Array.isArray(n.children)
+                ? n.children.map(walk)
+                : [];
+            const subs: SubmenuNode[] = [];
+            for (const c of children) {
+                const ct = (c as any).type;
+                if (ct === "submenu") subs.push(c as SubmenuNode);
+                else if (ct === "menu")
+                    subs.push({
+                        type: "submenu",
+                        id: (c as any).id,
+                        label: (c as any).label,
+                    });
+            }
+            return {
+                type: "menu",
+                id,
                 label,
-                children: [] as ModuleNode[],
+                children: subs.length ? subs : undefined,
             };
-            // Anak group bisa module/menu—pastikan semua module; jika ada "menu" langsung di bawah group,
-            // bungkus ke pseudo module bernama label group (agar UI tetap konsisten)
-            const modules: ModuleNode[] = [];
-            const looseMenus: MenuNode[] = [];
-            for (const ch of children) {
-                if ((ch as any).type === "module")
-                    modules.push(ch as ModuleNode);
-                else if ((ch as any).type === "menu")
-                    looseMenus.push(ch as MenuNode);
-            }
-            if (looseMenus.length) {
-                modules.unshift({
-                    type: "module",
-                    id: `${n.id}::_auto`,
-                    label,
-                    children: looseMenus,
-                });
-            }
-            g.children = modules;
-            return g;
         }
 
-        // module
-        const m: ModuleNode = {
-            type: "module",
-            id: String(n.id),
-            label,
-            children: [],
-        };
-        // anak module bisa: module lanjutan (submodule) atau menu
-        m.children = children as any;
-        return m;
+        const kids = Array.isArray(n.children) ? n.children.map(walk) : [];
+        if (t === "group")
+            return {
+                type: "group",
+                id,
+                label,
+                children: kids.filter(
+                    (k) => (k as any).type === "module"
+                ) as MModuleNode[],
+            };
+        if (t === "module")
+            return {
+                type: "module",
+                id,
+                label,
+                children: kids as Array<MMenuNode | MModuleNode>,
+            };
+        return { type: "submenu", id, label };
     };
 
     const roots = apiRoots.map(walk);
-
-    // hanya ambil GroupNode di root; jika API mengembalikan module/menu di root, bungkus ke group default
-    const groups: GroupNode[] = [];
-    const orphans: (ModuleNode | MenuNode)[] = [];
-    for (const r of roots) {
-        if ((r as any).type === "group") groups.push(r as GroupNode);
-        else orphans.push(r as any);
-    }
-    if (orphans.length) {
-        groups.unshift({
-            type: "group",
-            id: "_ungrouped",
-            label: "Ungrouped",
-            children: orphans.map((x, i) =>
-                (x as any).type === "module"
-                    ? (x as ModuleNode)
-                    : ({
-                          type: "module",
-                          id: `_ung_${i}`,
-                          label: (x as MenuNode).label,
-                          children: [x as MenuNode],
-                      } as ModuleNode)
-            ),
-        });
-    }
-
-    // urut label supaya rapi
-    groups.forEach((g) => {
-        g.children.sort((a, b) => a.label.localeCompare(b.label));
-        g.children.forEach((m) => {
-            // jika submodule -> urutkan
-            (m.children as any[])?.sort?.((a: any, b: any) =>
-                a.label.localeCompare(b.label)
-            );
-        });
-    });
-    return groups.sort((a, b) => a.label.localeCompare(b.label));
+    return roots.filter((r) => (r as any).type === "group") as MGroupNode[];
 }
 
 const ITEMS_PER_PAGE = 9999;
@@ -160,19 +152,16 @@ export function AccessControlMatrixPage() {
     const [rawMatrix, setRawMatrix] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
 
-    // === Tree dari API (mst_menus) ===
-    const [tree, setTree] = useState<GroupNode[]>([]);
+    const [tree, setTree] = useState<MGroupNode[]>([]);
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-    // Load levels, matrix, dan tree menu
     useEffect(() => {
         (async () => {
             try {
                 const [lvls, matrix, menus] = await Promise.all([
                     fetchData("level_users"),
                     fetchData("access_control_matrices"),
-                    // opsional: pass product_code kalau mau filter per produk
-                    fetchMenusTree(/* { product_code: "RENTVIX" } */),
+                    fetchMenusTree(),
                 ]);
 
                 const normalizedLevels = (lvls || []).map((x: any) => ({
@@ -183,10 +172,9 @@ export function AccessControlMatrixPage() {
 
                 setLevels(normalizedLevels);
                 setRawMatrix(Array.isArray(matrix) ? matrix : []);
-
-                // Map menus ke tree
-                const apiNodes = Array.isArray(menus) ? menus : [];
-                setTree(mapMenusApiToTreeNodes(apiNodes));
+                setTree(
+                    mapMenusApiToTreeNodes(Array.isArray(menus) ? menus : [])
+                );
 
                 const firstActive = normalizedLevels.find(
                     (l: any) => String(l.status ?? "").toLowerCase() === "aktif"
@@ -207,163 +195,161 @@ export function AccessControlMatrixPage() {
         })();
     }, [toast]);
 
-    // Kumpulkan semua leaf-menu (dari tree)
-    const allMenusFlat = useMemo(() => {
-        type AnyNode = GroupNode | ModuleNode | MenuNode;
-        const res: { id: string; label: string }[] = [];
-        const collect = (nodes: AnyNode[]) => {
+    // Kumpulkan semua leaf (menu tanpa anak / setiap submenu)
+    const allLeaves = useMemo(() => {
+        const res: { id: number; label: string }[] = [];
+        const walk = (
+            nodes: Array<MGroupNode | MModuleNode | MMenuNode | SubmenuNode>
+        ) => {
             for (const n of nodes) {
-                if ((n as any).type === "menu") {
-                    const mn = n as MenuNode;
-                    res.push({ id: mn.id, label: mn.label });
-                } else {
-                    const children = (n as GroupNode | ModuleNode).children as
-                        | AnyNode[]
-                        | undefined;
-                    if (Array.isArray(children) && children.length)
-                        collect(children);
+                const t = (n as any).type;
+                if (t === "submenu") {
+                    res.push({ id: (n as any).id, label: (n as any).label });
+                    continue;
                 }
+                if (t === "menu") {
+                    const m = n as MMenuNode;
+                    if (!m.children?.length)
+                        res.push({ id: m.id, label: m.label });
+                    else
+                        m.children.forEach((sm) =>
+                            res.push({ id: sm.id, label: sm.label })
+                        );
+                    continue;
+                }
+                const ch = (n as any).children as any[] | undefined;
+                if (ch?.length) walk(ch);
             }
         };
-        collect(tree as AnyNode[]);
+        walk(tree as any[]);
         return res;
     }, [tree]);
 
-    // Rows untuk level terpilih
-    const rows: MatrixRow[] = useMemo(() => {
-        const mapByMenu: Record<string, any> = {};
+    // rowsAll: cocokkan KE DB pakai menu_id saja
+    const rowsAll: MatrixRow[] = useMemo(() => {
+        const mapById: Record<string, any> = {};
         for (const r of rawMatrix) {
             if (String(r.user_level_id) !== String(selectedLevelId)) continue;
-            const key = String(
-                r.menu_id ?? r.menuId ?? r.menu_key ?? r.menuKey ?? ""
-            );
-            if (!key) continue;
-            mapByMenu[key] = r;
+            const key = r.menu_id ?? r.menuId;
+            if (key == null) continue;
+            mapById[String(key)] = r;
         }
+        return allLeaves.map((m) => {
+            const found = mapById[String(m.id)] ?? {};
+            return {
+                id: m.id,
+                label: m.label,
+                view: asBool(found.view),
+                add: asBool(found.add),
+                edit: asBool(found.edit),
+                delete: asBool(found.delete),
+                approve: asBool(found.approve),
+            } as MatrixRow;
+        });
+    }, [rawMatrix, selectedLevelId, allLeaves]);
 
-        return allMenusFlat
-            .filter((m) =>
-                m.label.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .map((m) => {
-                const found = mapByMenu[m.id] ?? {};
-                return {
-                    id: m.id,
-                    label: m.label,
-                    view: Boolean(found.view),
-                    add: Boolean(found.add),
-                    edit: Boolean(found.edit),
-                    delete: Boolean(found.delete),
-                    approve: Boolean(found.approve),
-                } as MatrixRow;
-            });
-    }, [rawMatrix, selectedLevelId, searchTerm, allMenusFlat]);
+    // tampilan tabel = rowsVisible (boleh difilter)
+    const rowsVisible = useMemo(() => {
+        const q = searchTerm.toLowerCase();
+        return q
+            ? rowsAll.filter((r) => r.label.toLowerCase().includes(q))
+            : rowsAll;
+    }, [rowsAll, searchTerm]);
 
-    // Stats
+    // statistik dihitung dari rowsAll (bukan terfilter)
     const stats = useMemo(() => {
-        const totalMenus = rows.length;
-        const viewCount = rows.filter((r) => r.view).length;
-        const addCount = rows.filter((r) => r.add).length;
-        const editCount = rows.filter((r) => r.edit).length;
-        const deleteCount = rows.filter((r) => r.delete).length;
-        const approveCount = rows.filter((r) => r.approve).length;
+        const totalMenus = rowsAll.length;
         return {
             totalMenus,
-            viewCount,
-            addCount,
-            editCount,
-            deleteCount,
-            approveCount,
+            viewCount: rowsAll.filter((r) => r.view).length,
+            addCount: rowsAll.filter((r) => r.add).length,
+            editCount: rowsAll.filter((r) => r.edit).length,
+            deleteCount: rowsAll.filter((r) => r.delete).length,
+            approveCount: rowsAll.filter((r) => r.approve).length,
         };
-    }, [rows]);
+    }, [rowsAll]);
 
-    // Toggle cell
+    // helper upsert lokal (pakai menu_id)
+    const upsertOne = (
+        draft: any[],
+        id: number | string,
+        key: keyof Omit<MatrixRow, "id" | "label">,
+        val: boolean
+    ) => {
+        const idx = draft.findIndex(
+            (x) =>
+                String(x.user_level_id) === String(selectedLevelId) &&
+                String(x.menu_id ?? x.menuId) === String(id)
+        );
+        if (idx === -1) {
+            draft.push({
+                user_level_id: selectedLevelId,
+                menu_id: Number(id),
+                view: false,
+                add: false,
+                edit: false,
+                delete: false,
+                approve: false,
+                [key]: val,
+            });
+        } else {
+            draft[idx] = { ...draft[idx], [key]: val };
+        }
+    };
+
     const onToggleRow = (
         id: MatrixRow["id"],
         key: keyof Omit<MatrixRow, "id" | "label">,
         val: boolean
     ) => {
         setRawMatrix((prev) => {
-            const next = [...prev];
-            const idx = next.findIndex(
-                (x) =>
-                    String(x.user_level_id) === String(selectedLevelId) &&
-                    String(x.menu_id ?? x.menuId ?? x.menu_key) === String(id)
-            );
-            if (idx === -1) {
-                next.push({
-                    user_level_id: selectedLevelId,
-                    // karena menu dari DB (numeric), id kemungkinan numeric -> akan dikirim sebagai menu_id saat saveBulk
-                    // untuk konsistensi di memori, simpan di menu_key juga tidak masalah, backend upsert menangani keduanya
-                    menu_key: String(id),
-                    view: false,
-                    add: false,
-                    edit: false,
-                    delete: false,
-                    approve: false,
-                    [key]: val,
-                });
-            } else {
-                next[idx] = { ...next[idx], [key]: val };
-            }
-            return next;
+            const d = [...prev];
+            upsertOne(d, id, key, val);
+            return d;
         });
     };
 
-    // Toggle seluruh kolom
     const onToggleAllColumn = (
         key: keyof Omit<MatrixRow, "id" | "label">,
         val: boolean
     ) => {
         setRawMatrix((prev) => {
-            const next = [...prev];
-            const indexByMenu = new Map<string, number>();
-            next.forEach((x, i) => {
-                if (String(x.user_level_id) === String(selectedLevelId)) {
-                    const k = String(x.menu_id ?? x.menuId ?? x.menu_key);
-                    if (!indexByMenu.has(k)) indexByMenu.set(k, i);
-                }
-            });
-            rows.forEach((r) => {
-                const k = String(r.id);
-                const idx = indexByMenu.get(k);
-                if (idx === undefined) {
-                    next.push({
-                        user_level_id: selectedLevelId,
-                        menu_key: String(k),
-                        view: false,
-                        add: false,
-                        edit: false,
-                        delete: false,
-                        approve: false,
-                        [key]: val,
-                    });
-                } else {
-                    next[idx] = { ...next[idx], [key]: val };
-                }
-            });
-            return next;
+            const d = [...prev];
+            for (const r of rowsVisible) upsertOne(d, r.id, key, val);
+            return d;
         });
     };
 
-    // SAVE per level
-    async function handleSaveLevel() {
-        if (!selectedLevelId) return;
-        if (!rows.length) return;
+    // toggle banyak (untuk parent)
+    const onToggleMany = (
+        ids: Array<number | string>,
+        key: keyof Omit<MatrixRow, "id" | "label">,
+        val: boolean
+    ) => {
+        setRawMatrix((prev) => {
+            const d = [...prev];
+            for (const id of ids) upsertOne(d, id, key, val);
+            return d;
+        });
+    };
 
-        // saveAccessControlMatrixBulk akan otomatis kirim menu_id (numeric) atau menu_key (string)
+    // SAVE → kirim rowsAll dan pakai snapshot balik
+    async function handleSaveLevel() {
+        if (!selectedLevelId || !rowsAll.length) return;
         const res = await saveAccessControlMatrixBulk(
             String(selectedLevelId),
-            rows
+            rowsAll
         );
         if (!res?.success)
             throw new Error(res?.message || "Gagal menyimpan izin (bulk).");
-
-        const fresh = await fetchData("access_control_matrices");
-        setRawMatrix(Array.isArray(fresh) ? fresh : []);
+        if (Array.isArray(res.data)) {
+            setRawMatrix(res.data); // snapshot server → re-render & stats update
+        } else {
+            const fresh = await fetchData("access_control_matrices");
+            setRawMatrix(Array.isArray(fresh) ? fresh : []);
+        }
     }
 
-    // RESET
     async function handleResetLevel() {
         setSearchTerm("");
         setExpanded({});
@@ -373,9 +359,8 @@ export function AccessControlMatrixPage() {
 
     return (
         <>
-            {/* Top bar / Breadcrumb */}
             <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <SidebarTrigger className="-ml-1 h-7 w-7 border border-border text-foreground hover:bg-accent hover:text-foreground dark:border-white/30" />
+                <SidebarTrigger className="-ml-1 h-7 w-7 border border-border" />
                 <Separator orientation="vertical" className="mr-2 h-4" />
                 <Breadcrumb className="min-w-0">
                     <BreadcrumbList>
@@ -404,13 +389,11 @@ export function AccessControlMatrixPage() {
                         onSave={handleSaveLevel}
                         onReset={handleResetLevel}
                     />
-
                     <AccessControlLevelPicker
                         levels={levels}
                         selectedLevelId={selectedLevelId}
                         setSelectedLevelId={setSelectedLevelId}
                     />
-
                     <AccessControlStats
                         totalMenus={stats.totalMenus}
                         viewCount={stats.viewCount}
@@ -419,34 +402,32 @@ export function AccessControlMatrixPage() {
                         deleteCount={stats.deleteCount}
                         approveCount={stats.approveCount}
                     />
-
                     <ResultsInfo
-                        total={rows.length}
+                        total={rowsVisible.length}
                         currentPage={1}
                         itemsPerPage={ITEMS_PER_PAGE}
                     />
-
                     <AccessControlMatrixFilters
                         searchTerm={searchTerm}
                         setSearchTerm={setSearchTerm}
                     />
 
-                    {/* Desktop: tabel (tree), Mobile: kartu hierarki */}
                     <div className="hidden md:block">
                         <AccessControlMatrixTable
-                            rows={rows}
-                            tree={tree}
+                            rows={rowsVisible as MatrixRow[]}
+                            tree={tree as unknown as GroupNode[]}
                             expanded={expanded}
                             setExpanded={setExpanded}
                             onToggleRow={onToggleRow}
                             onToggleAllColumn={onToggleAllColumn}
+                            onToggleMany={onToggleMany}
                         />
                     </div>
 
                     <div className="md:hidden">
                         <AccessControlMatrixCardsMobile
-                            tree={tree}
-                            rows={rows}
+                            tree={tree as unknown as GroupNode[]}
+                            rows={rowsVisible as MatrixRow[]}
                             onToggleRow={onToggleRow}
                         />
                     </div>

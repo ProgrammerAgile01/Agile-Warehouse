@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Generate;
 
 use App\Http\Controllers\Controller;
 use App\Models\Menu;
+use App\Models\AccessControlMatrix;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -24,61 +25,131 @@ class MenuController extends Controller
 
  
    public function tree(Request $req)
-{
-    $q = Menu::query();
+    {
+        $productCode     = $req->query('product_code');
+        $includeInactive = $req->boolean('include_inactive', false);
+        $levelId         = $req->query('level_id'); // <-- dipakai untuk prune
 
-    if ($pc = $req->query('product_code')) {
-        $q->forProduct($pc);
+        // Ambil root + subtree
+        $q = Menu::query();
+        if ($productCode) {
+            $q->forProduct($productCode);
+        }
+        if (!$includeInactive) {
+            $q->active();
+        }
+
+        $roots = $q->whereNull('parent_id')
+            ->orderBy('order_number')
+            ->with(['recursiveChildren'])
+            ->get();
+
+        // Kumpulan menu yang diizinkan untuk level tertentu
+        $allowedId  = null;
+        $allowedKey = null;
+
+        if (!empty($levelId)) {
+            // izinkan berdasarkan view=1
+            $allowedId  = AccessControlMatrix::query()
+                ->where('user_level_id', $levelId)
+                ->where('view', 1)
+                ->whereNotNull('menu_id')
+                ->pluck('menu_id')
+                ->map(fn($v) => (int) $v)
+                ->toArray();
+
+            // opsional: kalau kamu juga pakai menu_key
+            $allowedKey = AccessControlMatrix::query()
+                ->where('user_level_id', $levelId)
+                ->where('view', 1)
+                ->whereNotNull('menu_key')
+                ->pluck('menu_key')
+                ->map(fn($v) => (string) $v)
+                ->toArray();
+        }
+
+        // Normalisasi type
+        $normalizeType = function (Menu $m): string {
+            $t = strtolower((string) $m->type);
+            if (in_array($t, ['group', 'module', 'menu', 'submenu'], true)) {
+                // perlakukan 'submenu' sebagai kontainer juga
+                return $t === 'submenu' ? 'module' : $t;
+            }
+            // fallback by level
+            $lvl = (int) ($m->level ?? 0);
+            return $lvl <= 0 ? 'group' : ($lvl === 1 ? 'module' : 'menu');
+        };
+
+        // Filter izin untuk node "menu" (leaf)
+        $canView = function (Menu $m) use ($allowedId, $allowedKey): bool {
+            // kalau tanpa level id, jangan prune (kompatibilitas lama)
+            if ($allowedId === null && $allowedKey === null) return true;
+
+            // kalau node bukan tipe menu, biarkan dulu (diputus di level anak)
+            $t = strtolower((string) $m->type);
+            $isMenuLike = $t === 'menu';
+
+            // cek id/key
+            $id  = (int) $m->id;
+            $key = (string) ($m->menu_key ?? '');
+
+            if ($isMenuLike) {
+                $okId  = is_array($allowedId)  ? in_array($id, $allowedId, true) : true;
+                $okKey = is_array($allowedKey) ? in_array($key, $allowedKey, true) : true;
+                // kalau punya keduanya, cukup salah satu true
+                return $okId || $okKey;
+            }
+            return true;
+        };
+
+        // Rekursif map + prune
+        $mapNode = function (Menu $node) use (&$mapNode, $normalizeType, $canView) {
+            $type = $normalizeType($node);
+
+            // Map anak dulu
+            $children = [];
+            foreach ($node->recursiveChildren ?? [] as $ch) {
+                $mapped = $mapNode($ch);
+                if ($mapped) $children[] = $mapped;
+            }
+
+            // Kalau node ini "menu", putuskan boleh tampil atau tidak
+            if ($type === 'menu') {
+                if (!$canView($node)) {
+                    return null; // tidak boleh view → buang
+                }
+            }
+
+            // Kalau bukan leaflet tapi semua anak terbuang dan dia bukan 'menu', periksa:
+            // - group/module tanpa anak → boleh tampil jika memang kontainer di desainmu masih ingin terlihat.
+            //   Di sini kita tampilkan kontainernya hanya jika masih punya anak.
+            if ($type !== 'menu' && empty($children)) {
+                // group/module kosong → sembunyikan
+                return null;
+            }
+
+            return [
+                'id'         => $node->id,
+                'title'      => $node->title,
+                'type'       => $type,
+                'route_path' => $node->route_path,
+                'icon'       => $node->icon,
+                'color'      => $node->color,
+                'children'   => $children,
+            ];
+        };
+
+        $data = [];
+        foreach ($roots as $r) {
+            $mapped = $mapNode($r);
+            if ($mapped) $data[] = $mapped;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+        ]);
     }
-    if (!$req->boolean('include_inactive')) {
-        $q->active();
-    }
-
-    $roots = $q->whereNull('parent_id')
-        ->orderBy('order_number')
-        ->with(['recursiveChildren'])
-        ->get();
-
-    /** @var callable|null $mapNode */
-    $mapNode = null; // <-- pre-declare agar analyzer tidak protes
-  // Map ke bentuk tree generik { id, title, type, children:[] }
-$mapNode = function (Menu $m) use (&$mapNode) {
-    $rawType = strtolower($m->type ?? '');
-
-    // Akui 'submenu' sebagai kontainer juga
-    if (in_array($rawType, ['group', 'module', 'menu', 'submenu'], true)) {
-        $type = $rawType === 'submenu' ? 'module' : $rawType;
-    } else {
-        // fallback by level
-        $lvl = (int) ($m->level ?? 0);
-        $type = ($lvl <= 0)
-            ? 'group'
-            : ($lvl === 1 ? 'module' : 'menu');
-    }
-
-    return [
-        'id'         => $m->id,
-        'title'      => $m->title,
-        'type'       => $type,               // <-- sekarang 'submenu' jadi 'module'
-        'route_path' => $m->route_path,
-        'icon'       => $m->icon,
-        'color'      => $m->color,
-        'children'   => $m->recursiveChildren
-            ? $m->recursiveChildren->map(fn($c) => $mapNode($c))->values()->all()
-            : [],
-    ];
-};
-
-
-    $data = $roots->map(fn (Menu $m) => $mapNode($m))->values()->all();
-
-    return response()->json([
-        'success' => true,
-        'data'    => $data,
-    ]);
-}
-
-
 
 
     public function store(Request $req)

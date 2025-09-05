@@ -1,3 +1,4 @@
+// app/components/access-control-matrix/access-control-matrix-page-contents.tsx
 "use client";
 
 import {
@@ -12,9 +13,8 @@ import {
     BadgeCheck,
     ArrowLeft,
 } from "lucide-react";
-
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import React, { Fragment, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-
 import {
     Table,
     TableBody,
@@ -48,26 +47,42 @@ export type MatrixRow = {
     approve: boolean;
 };
 
-export type MenuNode = { type: "menu"; id: string; label: string };
+export type SubmenuNode = { type: "submenu"; id: string; label: string };
+
+export type MenuNode = {
+    type: "menu";
+    id: string;
+    label: string;
+    children?: SubmenuNode[];
+};
+
 export type ModuleNode = {
     type: "module";
     id: string;
     label: string;
     children: Array<MenuNode | ModuleNode>;
 };
+
 export type GroupNode = {
     type: "group";
     id: string;
     label: string;
     children: ModuleNode[];
 };
-export type TreeNode = GroupNode | ModuleNode | MenuNode;
 
-export function isParent(n: TreeNode): n is GroupNode | ModuleNode {
-    return n.type !== "menu";
+export type TreeNode = GroupNode | ModuleNode | MenuNode | SubmenuNode;
+
+export function isParent(n: TreeNode): n is GroupNode | ModuleNode | MenuNode {
+    if ((n as any).type === "submenu") return false;
+    if ((n as any).type === "menu")
+        return (
+            Array.isArray((n as MenuNode).children) &&
+            (n as MenuNode).children!.length > 0
+        );
+    return true;
 }
 
-/* ======================= Header (lebih responsif) ======================= */
+/* ======================= Header ======================= */
 export function AccessControlMatrixHeader({
     onAdd,
     onSave,
@@ -79,18 +94,12 @@ export function AccessControlMatrixHeader({
 }) {
     return (
         <div className="sticky top-16 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 -mx-4 px-4 pt-2 pb-3">
-            {/* Back hanya mobile */}
             <div className="mb-1 md:hidden">
                 <Link href="/" className="inline-flex">
                     <Button
                         variant="ghost"
                         size="sm"
-                        className="
-              gap-2
-              text-foreground dark:text-foreground
-              hover:bg-accent/60 dark:hover:bg-accent/30
-              data-[state=open]:bg-accent/60
-            "
+                        className="gap-2 hover:bg-accent/60"
                     >
                         <ArrowLeft className="h-4 w-4" />
                         <span>Kembali</span>
@@ -99,9 +108,8 @@ export function AccessControlMatrixHeader({
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                {/* Title + subtitle */}
                 <div className="min-w-0">
-                    <h1 className="text-lg md:text-2xl font-bold text-foreground truncate">
+                    <h1 className="text-lg md:text-2xl font-bold truncate">
                         Access Control Matrix
                     </h1>
                     <p className="text-muted-foreground text-xs md:text-sm truncate">
@@ -109,43 +117,20 @@ export function AccessControlMatrixHeader({
                     </p>
                 </div>
 
-                {/* Aksi */}
-                <div className="flex w-full sm:w-auto flex-wrap sm:flex-nowrap gap-2 sm:justify-end overflow-x-auto sm:overflow-visible no-scrollbar -mx-1 px-1">
+                <div className="flex w-full sm:w-auto flex-wrap gap-2 sm:justify-end overflow-x-auto -mx-1 px-1">
                     {onReset && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={onReset}
-                            className="
-                shrink-0 whitespace-nowrap
-                text-foreground dark:text-foreground
-                border-border dark:border-border
-                hover:bg-accent/60 dark:hover:bg-accent/30
-                bg-transparent
-              "
-                        >
+                        <Button variant="outline" size="sm" onClick={onReset}>
                             <RotateCcw className="h-4 w-4 mr-2" />
                             Reset
                         </Button>
                     )}
-
                     {onSave && (
-                        <Button
-                            size="sm"
-                            onClick={onSave}
-                            className="shrink-0 whitespace-nowrap"
-                        >
+                        <Button size="sm" onClick={onSave}>
                             <Save className="h-4 w-4 mr-2" />
                             Save Changes
                         </Button>
                     )}
-
-                    <Button
-                        onClick={onAdd}
-                        variant="secondary"
-                        size="sm"
-                        className="shrink-0 whitespace-nowrap"
-                    >
+                    <Button onClick={onAdd} variant="secondary" size="sm">
                         <Plus className="h-4 w-4 mr-2" />
                         Tambah Access Control Matrix
                     </Button>
@@ -172,10 +157,9 @@ export function AccessControlMatrixFilters({
                             placeholder="Search menu..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="text-foreground placeholder:text-muted-foreground"
                         />
                     </div>
-                    <div className="flex gap-2">{/* placeholder */}</div>
+                    <div className="flex gap-2" />
                 </div>
             </CardContent>
         </Card>
@@ -249,7 +233,7 @@ export function AccessControlLevelPicker({
     );
 }
 
-/* ======================= Stats (lebih responsif) ======================= */
+/* ======================= Stats ======================= */
 export function AccessControlStats({
     totalMenus = 0,
     viewCount = 0,
@@ -268,18 +252,14 @@ export function AccessControlStats({
     const Stat = ({
         title,
         value,
-        className,
     }: {
         title: string;
         value: number | string;
-        className?: string;
     }) => (
         <Card className="h-full">
             <CardContent className="p-3 md:p-4 h-full">
                 <div className="h-full min-w-0 flex flex-col items-center justify-center">
-                    <div
-                        className={`text-2xl md:text-3xl font-extrabold leading-6 ${className} truncate`}
-                    >
+                    <div className="text-2xl md:text-3xl font-extrabold leading-6 truncate">
                         {value}
                     </div>
                     <div className="text-xs md:text-sm text-muted-foreground mt-0.5 truncate">
@@ -292,36 +272,12 @@ export function AccessControlStats({
 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 md:gap-4">
-            <Stat
-                title="Total Menus"
-                value={totalMenus}
-                className="text-slate-900 dark:text-slate-100"
-            />
-            <Stat
-                title="View Access"
-                value={viewCount}
-                className="text-blue-600 dark:text-blue-400"
-            />
-            <Stat
-                title="Add Access"
-                value={addCount}
-                className="text-emerald-600 dark:text-emerald-400"
-            />
-            <Stat
-                title="Edit Access"
-                value={editCount}
-                className="text-amber-600 dark:text-amber-400"
-            />
-            <Stat
-                title="Delete Access"
-                value={deleteCount}
-                className="text-rose-600 dark:text-rose-400"
-            />
-            <Stat
-                title="Approve Access"
-                value={approveCount}
-                className="text-violet-600 dark:text-violet-400"
-            />
+            <Stat title="Total Menus" value={totalMenus} />
+            <Stat title="View Access" value={viewCount} />
+            <Stat title="Add Access" value={addCount} />
+            <Stat title="Edit Access" value={editCount} />
+            <Stat title="Delete Access" value={deleteCount} />
+            <Stat title="Approve Access" value={approveCount} />
         </div>
     );
 }
@@ -348,7 +304,7 @@ export function ResultsInfo({
     );
 }
 
-/* ======================= Table (Tree View) – DESKTOP ======================= */
+/* ======================= Table (Desktop) ======================= */
 export function AccessControlMatrixTable({
     rows,
     tree,
@@ -356,6 +312,7 @@ export function AccessControlMatrixTable({
     setExpanded,
     onToggleRow,
     onToggleAllColumn,
+    onToggleMany, // <-- baru: batch toggle untuk parent
 }: {
     rows: MatrixRow[];
     tree: GroupNode[];
@@ -367,6 +324,11 @@ export function AccessControlMatrixTable({
         val: boolean
     ) => void;
     onToggleAllColumn: (
+        key: keyof Omit<MatrixRow, "id" | "label">,
+        val: boolean
+    ) => void;
+    onToggleMany: (
+        ids: Array<string | number>,
         key: keyof Omit<MatrixRow, "id" | "label">,
         val: boolean
     ) => void;
@@ -383,12 +345,20 @@ export function AccessControlMatrixTable({
     const toggleExp = (id: string) =>
         setExpanded({ ...expanded, [id]: !expanded[id] });
 
-    type AnyNode = GroupNode | ModuleNode | MenuNode;
+    type AnyNode = GroupNode | ModuleNode | MenuNode | SubmenuNode;
+
     const collectLeafIds = (node: AnyNode): string[] => {
-        if ((node as any).type === "menu")
-            return [String((node as MenuNode).id)];
-        const children = (node as GroupNode | ModuleNode).children as AnyNode[];
-        if (!Array.isArray(children)) return [];
+        const t = (node as any).type;
+        if (t === "submenu") return [String((node as SubmenuNode).id)];
+        if (t === "menu") {
+            const mn = node as MenuNode;
+            if (!mn.children?.length) return [String(mn.id)];
+            return mn.children.map((s) => String(s.id));
+        }
+        const children = (node as GroupNode | ModuleNode).children as
+            | AnyNode[]
+            | undefined;
+        if (!children?.length) return [];
         const out: string[] = [];
         for (const c of children) out.push(...collectLeafIds(c));
         return out;
@@ -399,9 +369,9 @@ export function AccessControlMatrixTable({
         k: keyof Omit<MatrixRow, "id" | "label">
     ) => {
         const ids = collectLeafIds(node);
-        if (ids.length === 0) return { all: false, any: false, ids };
-        let any = false;
-        let all = true;
+        if (!ids.length) return { all: false, any: false, ids };
+        let any = false,
+            all = true;
         for (const id of ids) {
             const r = rowsMap.get(String(id));
             const v = Boolean(r?.[k]);
@@ -411,84 +381,139 @@ export function AccessControlMatrixTable({
         return { all, any, ids };
     };
 
-    const onToggleNodeColumn = (
-        node: AnyNode,
-        k: keyof Omit<MatrixRow, "id" | "label">,
-        val: boolean
-    ) => {
-        const ids = collectLeafIds(node);
-        for (const id of ids) onToggleRow(id, k, val);
-    };
-
     const permCols = ["view", "add", "edit", "delete", "approve"] as const;
 
-    const renderNode = (node: AnyNode, depth = 0) => {
+    const renderNode = (node: AnyNode, depth = 0): React.ReactNode => {
         const pad = depth * 20;
+        const t = (node as any).type;
 
-        if ((node as any).type !== "menu") {
-            const isOpen =
-                expanded[(node as GroupNode | ModuleNode).id] ?? true;
+        const renderParentRow = (id: string, label: string, klsPad: number) => (
+            <TableRow key={id}>
+                <TableCell>
+                    <div
+                        className="flex items-center gap-2 py-3"
+                        style={{ paddingLeft: klsPad }}
+                    >
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleExp(id)}
+                            className="h-6 px-1"
+                        >
+                            {expanded[id] ?? true ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
+                            )}
+                        </Button>
+                        <span className="font-medium">{label}</span>
+                    </div>
+                </TableCell>
+                {permCols.map((k) => {
+                    const agg = getNodeAgg(node, k);
+                    return (
+                        <TableCell key={k} className="text-center align-middle">
+                            <div className="flex justify-center">
+                                <Checkbox
+                                    checked={agg.all}
+                                    // @ts-expect-error: shadcn support indeterminate
+                                    indeterminate={agg.any && !agg.all}
+                                    onCheckedChange={(v) =>
+                                        onToggleMany(agg.ids, k, Boolean(v))
+                                    }
+                                />
+                            </div>
+                        </TableCell>
+                    );
+                })}
+            </TableRow>
+        );
+
+        if (t === "group" || t === "module") {
+            const id = (node as any).id;
+            const label = (node as any).label;
+            const isOpen = expanded[id] ?? true;
             return (
-                <TableRow key={(node as any).id}>
+                <Fragment key={id}>
+                    {renderParentRow(id, label, pad)}
+                    {isOpen &&
+                        (
+                            (node as GroupNode | ModuleNode).children as
+                                | AnyNode[]
+                                | undefined
+                        )?.map((c) => (
+                            <Fragment key={(c as any).id}>
+                                {renderNode(c, depth + 1)}
+                            </Fragment>
+                        ))}
+                </Fragment>
+            );
+        }
+
+        if (t === "menu") {
+            const mn = node as MenuNode;
+            const hasSub = !!mn.children?.length;
+            if (hasSub) {
+                const id = mn.id;
+                const isOpen = expanded[id] ?? true;
+                return (
+                    <Fragment key={id}>
+                        {renderParentRow(id, mn.label, pad)}
+                        {isOpen &&
+                            mn.children!.map((sm) => (
+                                <Fragment key={sm.id}>
+                                    {renderNode(sm as any, depth + 1)}
+                                </Fragment>
+                            ))}
+                    </Fragment>
+                );
+            }
+
+            const row =
+                rowsMap.get(String(mn.id)) ||
+                ({
+                    id: mn.id,
+                    label: mn.label,
+                    view: false,
+                    add: false,
+                    edit: false,
+                    delete: false,
+                    approve: false,
+                } as MatrixRow);
+
+            return (
+                <TableRow key={mn.id}>
                     <TableCell>
                         <div
-                            className="flex items-center gap-2 py-3"
-                            style={{ paddingLeft: pad }}
+                            className="flex items-center"
+                            style={{ paddingLeft: 40 }}
                         >
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => toggleExp((node as any).id)}
-                                className="h-6 px-1"
-                            >
-                                {isOpen ? (
-                                    <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                    <ChevronRight className="h-4 w-4" />
-                                )}
-                            </Button>
-                            <span className="font-medium">
-                                {(node as any).label}
-                            </span>
+                            {mn.label}
                         </div>
                     </TableCell>
-
-                    {permCols.map((k) => {
-                        const agg = getNodeAgg(node, k);
-                        const checked = agg.all;
-                        const indeterminate = agg.any && !agg.all;
-                        return (
-                            <TableCell
-                                key={k}
-                                className="text-center align-middle"
-                            >
-                                <div className="flex justify-center">
-                                    <Checkbox
-                                        checked={checked}
-                                        // @ts-expect-error shadcn support indeterminate
-                                        indeterminate={indeterminate}
-                                        onCheckedChange={(v) =>
-                                            onToggleNodeColumn(
-                                                node,
-                                                k,
-                                                Boolean(v)
-                                            )
-                                        }
-                                    />
-                                </div>
-                            </TableCell>
-                        );
-                    })}
+                    {permCols.map((k) => (
+                        <TableCell key={k} className="text-center align-middle">
+                            <div className="flex justify-center">
+                                <Checkbox
+                                    checked={Boolean((row as any)[k])}
+                                    onCheckedChange={(v) =>
+                                        onToggleRow(row.id, k, Boolean(v))
+                                    }
+                                />
+                            </div>
+                        </TableCell>
+                    ))}
                 </TableRow>
             );
         }
 
-        const leaf = node as MenuNode;
+        // submenu (leaf)
+        const sm = node as SubmenuNode;
         const row =
-            rowsMap.get(String(leaf.id)) ||
+            rowsMap.get(String(sm.id)) ||
             ({
-                id: leaf.id,
-                label: leaf.label,
+                id: sm.id,
+                label: sm.label,
                 view: false,
                 add: false,
                 edit: false,
@@ -497,16 +522,15 @@ export function AccessControlMatrixTable({
             } as MatrixRow);
 
         return (
-            <TableRow key={leaf.id}>
+            <TableRow key={sm.id}>
                 <TableCell>
                     <div
                         className="flex items-center"
-                        style={{ paddingLeft: 40 }}
+                        style={{ paddingLeft: 60 }}
                     >
-                        {leaf.label}
+                        {sm.label}
                     </div>
                 </TableCell>
-
                 {permCols.map((k) => (
                     <TableCell key={k} className="text-center align-middle">
                         <div className="flex justify-center">
@@ -523,21 +547,6 @@ export function AccessControlMatrixTable({
         );
     };
 
-    const renderTree = (
-        nodes: Array<GroupNode | ModuleNode | MenuNode>,
-        depth = 0
-    ): JSX.Element[] => {
-        const out: JSX.Element[] = [];
-        nodes.forEach((n) => {
-            out.push(renderNode(n as any, depth));
-            const isParent = (n as any).type !== "menu";
-            if (isParent && (expanded[(n as any).id] ?? true)) {
-                out.push(...renderTree((n as any).children ?? [], depth + 1));
-            }
-        });
-        return out;
-    };
-
     return (
         <Card>
             <CardContent className="p-0">
@@ -550,13 +559,9 @@ export function AccessControlMatrixTable({
                         <col className="w-[11.2%]" />
                         <col className="w-[11.2%]" />
                     </colgroup>
-
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="text-foreground">
-                                All Menu
-                            </TableHead>
-
+                            <TableHead>All Menu</TableHead>
                             {(
                                 [
                                     "view",
@@ -568,12 +573,12 @@ export function AccessControlMatrixTable({
                             ).map((k) => (
                                 <TableHead
                                     key={k}
-                                    className="text-center align-middle text-foreground"
+                                    className="text-center align-middle"
                                 >
                                     <div className="flex flex-col items-center gap-1">
                                         <Checkbox
                                             checked={isCheckedAll(k)}
-                                            // @ts-expect-error shadcn support indeterminate
+                                            // @ts-expect-error: indeterminate prop
                                             indeterminate={isIndeterminate(k)}
                                             onCheckedChange={(v) =>
                                                 onToggleAllColumn(k, Boolean(v))
@@ -604,15 +609,20 @@ export function AccessControlMatrixTable({
                             ))}
                         </TableRow>
                     </TableHeader>
-
-                    <TableBody>{renderTree(tree)}</TableBody>
+                    <TableBody>
+                        {tree.map((n) => (
+                            <Fragment key={n.id}>
+                                {renderNode(n as any, 0)}
+                            </Fragment>
+                        ))}
+                    </TableBody>
                 </Table>
             </CardContent>
         </Card>
     );
 }
 
-/* ======================= MOBILE CARDS – HIERARKI PENUH ======================= */
+/* ======================= Mobile Cards ======================= */
 export function AccessControlMatrixCardsMobile({
     tree,
     rows,
@@ -630,10 +640,8 @@ export function AccessControlMatrixCardsMobile({
         () => new Map<string, MatrixRow>(rows.map((r) => [String(r.id), r])),
         [rows]
     );
-
     const [expGroup, setExpGroup] = useState<Record<string, boolean>>({});
     const [expModule, setExpModule] = useState<Record<string, boolean>>({});
-
     const toggleG = (id: string) =>
         setExpGroup((p) => ({ ...p, [id]: !(p[id] ?? true) }));
     const toggleM = (id: string) =>
@@ -662,12 +670,11 @@ export function AccessControlMatrixCardsMobile({
                 return (
                     <Card key={g.id}>
                         <CardContent className="p-3">
-                            {/* Group Header */}
                             <button
                                 onClick={() => toggleG(g.id)}
                                 className="w-full flex items-center justify-between gap-2 py-1"
                             >
-                                <div className="font-semibold text-foreground text-left truncate">
+                                <div className="font-semibold text-left truncate">
                                     {g.label}
                                 </div>
                                 {isOpenG ? (
@@ -687,14 +694,13 @@ export function AccessControlMatrixCardsMobile({
                                                 key={m.id}
                                                 className="rounded-md border p-2 bg-card/50"
                                             >
-                                                {/* Module Header */}
                                                 <button
                                                     onClick={() =>
                                                         toggleM(m.id)
                                                     }
                                                     className="w-full flex items-center justify-between gap-2"
                                                 >
-                                                    <div className="font-medium text-sm text-foreground text-left truncate">
+                                                    <div className="font-medium text-sm text-left truncate">
                                                         {m.label}
                                                     </div>
                                                     {isOpenM ? (
@@ -704,7 +710,6 @@ export function AccessControlMatrixCardsMobile({
                                                     )}
                                                 </button>
 
-                                                {/* Module Body */}
                                                 {isOpenM && (
                                                     <div className="mt-2 space-y-2">
                                                         {m.children.map(
@@ -713,91 +718,220 @@ export function AccessControlMatrixCardsMobile({
                                                                     c.type ===
                                                                     "menu"
                                                                 ) {
-                                                                    const r =
-                                                                        rowMap.get(
-                                                                            String(
-                                                                                c.id
-                                                                            )
-                                                                        ) ||
-                                                                        ({
-                                                                            id: c.id,
-                                                                            label: c.label,
-                                                                            view: false,
-                                                                            add: false,
-                                                                            edit: false,
-                                                                            delete: false,
-                                                                            approve:
-                                                                                false,
-                                                                        } as MatrixRow);
+                                                                    const menu =
+                                                                        c as MenuNode;
+                                                                    const hasSub =
+                                                                        !!menu
+                                                                            .children
+                                                                            ?.length;
 
+                                                                    if (
+                                                                        !hasSub
+                                                                    ) {
+                                                                        const r =
+                                                                            rowMap.get(
+                                                                                String(
+                                                                                    menu.id
+                                                                                )
+                                                                            ) ||
+                                                                            ({
+                                                                                id: menu.id,
+                                                                                label: menu.label,
+                                                                                view: false,
+                                                                                add: false,
+                                                                                edit: false,
+                                                                                delete: false,
+                                                                                approve:
+                                                                                    false,
+                                                                            } as MatrixRow);
+
+                                                                        return (
+                                                                            <div
+                                                                                key={
+                                                                                    menu.id
+                                                                                }
+                                                                                className="rounded-md border p-2"
+                                                                            >
+                                                                                <div className="text-sm font-medium truncate">
+                                                                                    {
+                                                                                        menu.label
+                                                                                    }
+                                                                                </div>
+                                                                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                                                                    {perms.map(
+                                                                                        (
+                                                                                            p
+                                                                                        ) => (
+                                                                                            <div
+                                                                                                key={
+                                                                                                    p.key
+                                                                                                }
+                                                                                                className="flex items-center justify-between rounded-md border p-2"
+                                                                                            >
+                                                                                                <div className="flex items-center gap-2 text-xs">
+                                                                                                    {
+                                                                                                        p.icon
+                                                                                                    }
+                                                                                                    <span className="truncate">
+                                                                                                        {
+                                                                                                            p.label
+                                                                                                        }
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <Checkbox
+                                                                                                    checked={Boolean(
+                                                                                                        (
+                                                                                                            r as any
+                                                                                                        )[
+                                                                                                            p
+                                                                                                                .key
+                                                                                                        ]
+                                                                                                    )}
+                                                                                                    onCheckedChange={(
+                                                                                                        v
+                                                                                                    ) =>
+                                                                                                        onToggleRow(
+                                                                                                            r.id,
+                                                                                                            p.key as any,
+                                                                                                            Boolean(
+                                                                                                                v
+                                                                                                            )
+                                                                                                        )
+                                                                                                    }
+                                                                                                />
+                                                                                            </div>
+                                                                                        )
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+
+                                                                    const isOpenMenu =
+                                                                        expModule[
+                                                                            menu
+                                                                                .id
+                                                                        ] ??
+                                                                        true;
                                                                     return (
                                                                         <div
                                                                             key={
-                                                                                c.id
+                                                                                menu.id
                                                                             }
                                                                             className="rounded-md border p-2"
                                                                         >
-                                                                            <div className="text-sm font-medium truncate">
-                                                                                {
-                                                                                    c.label
-                                                                                }
-                                                                            </div>
-
-                                                                            <div className="grid grid-cols-2 gap-2 mt-2">
-                                                                                {perms.map(
-                                                                                    (
-                                                                                        p
-                                                                                    ) => (
-                                                                                        <div
-                                                                                            key={
-                                                                                                p.key
-                                                                                            }
-                                                                                            className="flex items-center justify-between rounded-md border p-2"
-                                                                                        >
-                                                                                            <div className="flex items-center gap-2 text-xs">
-                                                                                                {
-                                                                                                    p.icon
-                                                                                                }
-                                                                                                <span className="truncate">
-                                                                                                    {
-                                                                                                        p.label
-                                                                                                    }
-                                                                                                </span>
-                                                                                            </div>
-                                                                                            <Checkbox
-                                                                                                checked={Boolean(
-                                                                                                    (
-                                                                                                        r as any
-                                                                                                    )[
-                                                                                                        p
-                                                                                                            .key
-                                                                                                    ]
-                                                                                                )}
-                                                                                                onCheckedChange={(
-                                                                                                    v
-                                                                                                ) =>
-                                                                                                    onToggleRow(
-                                                                                                        r.id,
-                                                                                                        p.key as keyof Omit<
-                                                                                                            MatrixRow,
-                                                                                                            | "id"
-                                                                                                            | "label"
-                                                                                                        >,
-                                                                                                        Boolean(
-                                                                                                            v
-                                                                                                        )
-                                                                                                    )
-                                                                                                }
-                                                                                            />
-                                                                                        </div>
+                                                                            <button
+                                                                                onClick={() =>
+                                                                                    toggleM(
+                                                                                        menu.id
                                                                                     )
+                                                                                }
+                                                                                className="w-full flex items-center justify-between gap-2"
+                                                                            >
+                                                                                <div className="font-medium text-sm text-left truncate">
+                                                                                    {
+                                                                                        menu.label
+                                                                                    }
+                                                                                </div>
+                                                                                {isOpenMenu ? (
+                                                                                    <ChevronDown className="h-4 w-4 opacity-70" />
+                                                                                ) : (
+                                                                                    <ChevronRight className="h-4 w-4 opacity-70" />
                                                                                 )}
-                                                                            </div>
+                                                                            </button>
+
+                                                                            {isOpenMenu && (
+                                                                                <div className="mt-2 space-y-2">
+                                                                                    {menu.children!.map(
+                                                                                        (
+                                                                                            sm
+                                                                                        ) => {
+                                                                                            const r =
+                                                                                                rowMap.get(
+                                                                                                    String(
+                                                                                                        sm.id
+                                                                                                    )
+                                                                                                ) ||
+                                                                                                ({
+                                                                                                    id: sm.id,
+                                                                                                    label: sm.label,
+                                                                                                    view: false,
+                                                                                                    add: false,
+                                                                                                    edit: false,
+                                                                                                    delete: false,
+                                                                                                    approve:
+                                                                                                        false,
+                                                                                                } as MatrixRow);
+
+                                                                                            return (
+                                                                                                <div
+                                                                                                    key={
+                                                                                                        sm.id
+                                                                                                    }
+                                                                                                    className="rounded-md border p-2 ml-2"
+                                                                                                >
+                                                                                                    <div className="text-sm font-medium truncate">
+                                                                                                        {
+                                                                                                            sm.label
+                                                                                                        }
+                                                                                                    </div>
+                                                                                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                                                                                        {perms.map(
+                                                                                                            (
+                                                                                                                p
+                                                                                                            ) => (
+                                                                                                                <div
+                                                                                                                    key={
+                                                                                                                        p.key
+                                                                                                                    }
+                                                                                                                    className="flex items-center justify-between rounded-md border p-2"
+                                                                                                                >
+                                                                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                                                                        {
+                                                                                                                            p.icon
+                                                                                                                        }
+                                                                                                                        <span className="truncate">
+                                                                                                                            {
+                                                                                                                                p.label
+                                                                                                                            }
+                                                                                                                        </span>
+                                                                                                                    </div>
+                                                                                                                    <Checkbox
+                                                                                                                        checked={Boolean(
+                                                                                                                            (
+                                                                                                                                r as any
+                                                                                                                            )[
+                                                                                                                                p
+                                                                                                                                    .key
+                                                                                                                            ]
+                                                                                                                        )}
+                                                                                                                        onCheckedChange={(
+                                                                                                                            v
+                                                                                                                        ) =>
+                                                                                                                            onToggleRow(
+                                                                                                                                r.id,
+                                                                                                                                p.key as any,
+                                                                                                                                Boolean(
+                                                                                                                                    v
+                                                                                                                                )
+                                                                                                                            )
+                                                                                                                        }
+                                                                                                                    />
+                                                                                                                </div>
+                                                                                                            )
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            );
+                                                                                        }
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     );
                                                                 }
 
-                                                                // sub-module
+                                                                // sub-module (jika ada)
                                                                 const sub =
                                                                     c as ModuleNode;
                                                                 const isOpenSub =
@@ -837,89 +971,20 @@ export function AccessControlMatrixCardsMobile({
                                                                                 {sub.children.map(
                                                                                     (
                                                                                         mm: any
-                                                                                    ) => {
-                                                                                        const r =
-                                                                                            rowMap.get(
-                                                                                                String(
-                                                                                                    mm.id
-                                                                                                )
-                                                                                            ) ||
-                                                                                            ({
-                                                                                                id: mm.id,
-                                                                                                label: mm.label,
-                                                                                                view: false,
-                                                                                                add: false,
-                                                                                                edit: false,
-                                                                                                delete: false,
-                                                                                                approve:
-                                                                                                    false,
-                                                                                            } as MatrixRow);
-
-                                                                                        return (
-                                                                                            <div
-                                                                                                key={
-                                                                                                    mm.id
+                                                                                    ) => (
+                                                                                        <div
+                                                                                            key={
+                                                                                                mm.id
+                                                                                            }
+                                                                                            className="rounded-md border p-2"
+                                                                                        >
+                                                                                            <div className="text-sm font-medium truncate">
+                                                                                                {
+                                                                                                    mm.label
                                                                                                 }
-                                                                                                className="rounded-md border p-2"
-                                                                                            >
-                                                                                                <div className="text-sm font-medium truncate">
-                                                                                                    {
-                                                                                                        mm.label
-                                                                                                    }
-                                                                                                </div>
-                                                                                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                                                                                    {perms.map(
-                                                                                                        (
-                                                                                                            p
-                                                                                                        ) => (
-                                                                                                            <div
-                                                                                                                key={
-                                                                                                                    p.key
-                                                                                                                }
-                                                                                                                className="flex items-center justify-between rounded-md border p-2"
-                                                                                                            >
-                                                                                                                <div className="flex items-center gap-2 text-xs">
-                                                                                                                    {
-                                                                                                                        p.icon
-                                                                                                                    }
-                                                                                                                    <span className="truncate">
-                                                                                                                        {
-                                                                                                                            p.label
-                                                                                                                        }
-                                                                                                                    </span>
-                                                                                                                </div>
-                                                                                                                <Checkbox
-                                                                                                                    checked={Boolean(
-                                                                                                                        (
-                                                                                                                            r as any
-                                                                                                                        )[
-                                                                                                                            p
-                                                                                                                                .key
-                                                                                                                        ]
-                                                                                                                    )}
-                                                                                                                    onCheckedChange={(
-                                                                                                                        v
-                                                                                                                    ) =>
-                                                                                                                        onToggleRow(
-                                                                                                                            r.id,
-                                                                                                                            p.key as keyof Omit<
-                                                                                                                                MatrixRow,
-                                                                                                                                | "id"
-                                                                                                                                | "label"
-                                                                                                                            >,
-                                                                                                                            Boolean(
-                                                                                                                                v
-                                                                                                                            )
-                                                                                                                        )
-                                                                                                                    }
-                                                                                                                />
-                                                                                                            </div>
-                                                                                                        )
-                                                                                                    )}
-                                                                                                </div>
                                                                                             </div>
-                                                                                        );
-                                                                                    }
+                                                                                        </div>
+                                                                                    )
                                                                                 )}
                                                                             </div>
                                                                         )}

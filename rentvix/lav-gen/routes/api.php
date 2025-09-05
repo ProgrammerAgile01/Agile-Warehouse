@@ -72,7 +72,7 @@ Route::apiResource('companies', App\Http\Controllers\Generate\CompanyController:
 Route::apiResource('user_managements', App\Http\Controllers\Generate\UserManagementController::class);
 Route::get('user_managements/stats', [App\Http\Controllers\Generate\UserManagementController::class, 'stats'])
     ->name('user_managements.stats');
-    Route::post('access_control_matrices/bulk', [ACM::class, 'storeBulk'])->name('acm.bulk.store');
+Route::post('access_control_matrices/bulk', [ACM::class, 'storeBulk'])->name('acm.bulk.store');
 Route::put('access_control_matrices/bulk', [ACM::class, 'updateBulk'])->name('acm.bulk.update');
 
 

@@ -148,35 +148,33 @@ class AccessControlMatrixController extends Controller
     public function storeBulk(Request $request)
     {
         $data = $request->validate([
-            'user_level_id' => ['required', Rule::exists('level_user', 'id')],
-            'items' => ['required', 'array'],
-            'items.*.menu_id' => ['nullable', 'integer'],
-            'items.*.menu_key' => ['nullable', 'string'],
-            'items.*.view' => ['sometimes', 'boolean'],
-            'items.*.add' => ['sometimes', 'boolean'],
-            'items.*.edit' => ['sometimes', 'boolean'],
-            'items.*.delete' => ['sometimes', 'boolean'],
+            'user_level_id'   => ['required', Rule::exists('level_user', 'id')],
+            'items'           => ['required', 'array'],
+            'items.*.menu_id' => ['required', 'integer'], // ⬅️ wajib menu_id
+            'items.*.view'    => ['sometimes', 'boolean'],
+            'items.*.add'     => ['sometimes', 'boolean'],
+            'items.*.edit'    => ['sometimes', 'boolean'],
+            'items.*.delete'  => ['sometimes', 'boolean'],
             'items.*.approve' => ['sometimes', 'boolean'],
         ]);
 
-        foreach ($data['items'] as $i => $it) {
-            if (empty($it['menu_id']) && empty($it['menu_key'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Item index $i tidak memiliki menu_id atau menu_key",
-                ], 422);
-            }
-        }
-
         DB::transaction(function () use ($data) {
-            AccessControlMatrix::syncForLevel((int) $data['user_level_id'], $data['items']);
+            AccessControlMatrix::syncForLevel((int)$data['user_level_id'], $data['items']);
         });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Bulk store permissions berhasil',
-            'count' => count($data['items']),
-        ], 200);
+        // Snapshot terbaru (anti-cache)
+        $fresh = AccessControlMatrix::where('user_level_id', (int)$data['user_level_id'])
+            ->orderBy('menu_id')->get();
+
+        return response()
+            ->json([
+                'success' => true,
+                'message' => 'Bulk store permissions berhasil',
+                'count'   => count($data['items']),
+                'data'    => $fresh,
+            ], 200)
+            ->header('Cache-Control','no-store, no-cache, must-revalidate')
+            ->header('Pragma','no-cache');
     }
 
     /**

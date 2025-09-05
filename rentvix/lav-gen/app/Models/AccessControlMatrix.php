@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema; // ⬅️ tambahkan ini
 
 class AccessControlMatrix extends Model
 {
@@ -12,18 +14,12 @@ class AccessControlMatrix extends Model
     protected $fillable = [
         'user_level_id',
         'menu_id',
-        'menu_key',
-        'view',
-        'add',
-        'edit',
-        'delete',
-        'approve',
+        'view', 'add', 'edit', 'delete', 'approve',
     ];
 
     protected $casts = [
         'user_level_id' => 'integer',
         'menu_id' => 'integer',
-        'menu_key' => 'string',
         'view' => 'boolean',
         'add' => 'boolean',
         'edit' => 'boolean',
@@ -31,72 +27,55 @@ class AccessControlMatrix extends Model
         'approve' => 'boolean',
     ];
 
-    public function level(): BelongsTo
+    public function level(): BelongsTo { return $this->belongsTo(LevelUser::class, 'user_level_id'); }
+    public function menu(): BelongsTo { return $this->belongsTo(Menu::class, 'menu_id'); }
+
+    public function scopeForLevel($q, $levelId) { return $q->where('user_level_id', $levelId); }
+
+    /** SYNC menu_id only: upsert + hapus yang tak dikirim + bersihkan legacy menu_key */
+    public static function syncForLevel(int $levelId, array $rows): void
     {
-        return $this->belongsTo(LevelUser::class, 'user_level_id');
+        DB::transaction(function () use ($levelId, $rows) {
+            $now = now();
+            $payload = [];
+            $ids = [];
+
+            foreach ($rows as $r) {
+                $mid = isset($r['menu_id']) ? (int)$r['menu_id'] : null;
+                if (!$mid) continue;
+                $ids[] = $mid;
+                $payload[] = [
+                    'user_level_id' => $levelId,
+                    'menu_id'       => $mid,
+                    'view'    => (bool)($r['view'] ?? false),
+                    'add'     => (bool)($r['add'] ?? false),
+                    'edit'    => (bool)($r['edit'] ?? false),
+                    'delete'  => (bool)($r['delete'] ?? false),
+                    'approve' => (bool)($r['approve'] ?? false),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            foreach (array_chunk($payload, 1000) as $chunk) {
+                static::upsert(
+                    $chunk,
+                    ['user_level_id', 'menu_id'],
+                    ['view','add','edit','delete','approve','updated_at']
+                );
+            }
+
+            // benar-benar sync: sisakan hanya id yang dikirim
+            static::where('user_level_id', $levelId)
+                ->whereNotIn('menu_id', $ids ?: [-1])
+                ->delete();
+
+            // bersihkan warisan menu_key hanya jika kolomnya memang ada
+            if (Schema::hasColumn('access_control_matrix', 'menu_key')) {
+                static::where('user_level_id', $levelId)
+                      ->whereNotNull('menu_key')
+                      ->delete();
+            }
+        });
     }
-
-    public function menu(): BelongsTo
-    {
-        return $this->belongsTo(Menu::class, 'menu_id');
-    }
-
-    public function scopeForLevel($q, $levelId)
-    {
-        return $q->where('user_level_id', $levelId);
-    }
-
-    /**
-     * Helper sinkron massal (flex: menu_id atau menu_key).
-     */
-   public static function syncForLevel(int $levelId, array $rows): void
-{
-    $now = now();
-
-    // Bentuk payload minimal (tanpa kolom yang tidak dipakai)
-    $byId  = [];
-    $byKey = [];
-
-    foreach ($rows as $r) {
-        $menuId  = array_key_exists('menu_id',  $r) ? (int)   $r['menu_id']  : null;
-        $menuKey = array_key_exists('menu_key', $r) ? (string)$r['menu_key'] : null;
-
-        $common = [
-            'user_level_id' => $levelId,
-            'view'    => (bool)($r['view'] ?? false),
-            'add'     => (bool)($r['add'] ?? false),
-            'edit'    => (bool)($r['edit'] ?? false),
-            'delete'  => (bool)($r['delete'] ?? false),
-            'approve' => (bool)($r['approve'] ?? false),
-            'updated_at' => $now,
-            'created_at' => $now,
-        ];
-
-        if (!empty($menuId)) {
-            // HANYA sertakan menu_id, JANGAN sertakan menu_key
-            $byId[] = $common + ['menu_id' => $menuId];
-        } elseif (!empty($menuKey)) {
-            // HANYA sertakan menu_key, JANGAN sertakan menu_id
-            $byKey[] = $common + ['menu_key' => $menuKey];
-        }
-        // Kalau dua-duanya kosong, sudah disaring di controller sebelumnya
-    }
-
-    if ($byId) {
-        static::upsert(
-            $byId,
-            ['user_level_id', 'menu_id'],
-            ['view', 'add', 'edit', 'delete', 'approve', 'updated_at']
-        );
-    }
-
-    if ($byKey) {
-        static::upsert(
-            $byKey,
-            ['user_level_id', 'menu_key'],
-            ['view', 'add', 'edit', 'delete', 'approve', 'updated_at']
-        );
-    }
-}
-
 }

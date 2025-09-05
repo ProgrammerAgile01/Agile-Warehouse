@@ -429,7 +429,7 @@ export function getExportPdfUrl(
 export async function saveAccessControlMatrixBulk(
     userLevelId: string | number,
     rows: {
-        id: string | number;
+        id: number | string;
         view: boolean;
         add: boolean;
         edit: boolean;
@@ -437,48 +437,36 @@ export async function saveAccessControlMatrixBulk(
         approve: boolean;
     }[]
 ) {
-    const items = rows.map((r) => {
-        const isNumeric =
-            typeof r.id === "number" || /^[0-9]+$/.test(String(r.id));
-        return isNumeric
-            ? {
-                  menu_id: Number(r.id),
-                  view: !!r.view,
-                  add: !!r.add,
-                  edit: !!r.edit,
-                  delete: !!r.delete,
-                  approve: !!r.approve,
-              }
-            : {
-                  menu_key: String(r.id),
-                  view: !!r.view,
-                  add: !!r.add,
-                  edit: !!r.edit,
-                  delete: !!r.delete,
-                  approve: !!r.approve,
-              };
-    });
-
-    const payload = { user_level_id: userLevelId, items };
+    const items = rows.map((r) => ({
+        menu_id: Number(r.id), // ⬅️ wajib numerik
+        view: !!r.view,
+        add: !!r.add,
+        edit: !!r.edit,
+        delete: !!r.delete,
+        approve: !!r.approve,
+    }));
 
     const res = await fetch(`${API_URL}/access_control_matrices/bulk`, {
-        method: "POST", // atau PUT—keduanya ditangani sama di backend (upsert)
+        method: "POST",
+        cache: "no-store",
+        next: { revalidate: 0 },
         headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            Pragma: "no-cache",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ user_level_id: Number(userLevelId), items }),
     });
 
     if (!res.ok) {
         let msg = await res.text().catch(() => "");
         try {
-            const j = JSON.parse(msg);
-            msg = j.message || msg;
+            msg = JSON.parse(msg).message || msg;
         } catch {}
         throw new Error(msg || "Gagal menyimpan izin (bulk).");
     }
-    return res.json();
+    return res.json(); // { success, data: [...] }
 }
 
 /** pastikan path selalu diawali "/" */
@@ -595,11 +583,14 @@ export async function apiFetch(
 export async function fetchMenusTree(params?: {
     product_code?: string;
     include_inactive?: boolean;
+    level_id?: string | number; // <-- tambahan
 }) {
     const url = new URL(`${API_URL}/menus/tree`);
     if (params?.product_code)
-        url.searchParams.set("product_code", params.product_code);
+        url.searchParams.set("product_code", String(params.product_code));
     if (params?.include_inactive) url.searchParams.set("include_inactive", "1");
+    if (params?.level_id != null)
+        url.searchParams.set("level_id", String(params.level_id));
 
     const res = await fetch(url.toString(), {
         cache: "no-store",
@@ -610,7 +601,7 @@ export async function fetchMenusTree(params?: {
     return Array.isArray(j) ? j : j.data ?? [];
 }
 
-// Ambil semua ACM lalu saring di FE untuk level tertentu (paling cepat tanpa ubah backend)
+/** Ambil semua ACM lalu saring di FE — fallback jika server belum prune */
 export async function fetchPermsForLevel(levelId: string | number) {
     const res = await fetch(`${API_URL}/access_control_matrices`, {
         cache: "no-store",
