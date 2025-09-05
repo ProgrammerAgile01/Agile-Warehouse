@@ -1,10 +1,11 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Middleware\VerifyClientKey;
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Gateway\ProductGatewayController;
 use App\Http\Controllers\Gateway\FeatureGatewayController;
 use App\Http\Controllers\Gateway\MenuGatewayController;
+use App\Http\Controllers\WarehouseProductSyncController;
 
 // Health check (tanpa middleware)
 Route::get('/health', fn () => response()->json([
@@ -42,3 +43,20 @@ Route::prefix('features')
     Route::get('/catalog/menus',                    [MenuGatewayController::class, 'index']);     // ?product_code=&type=
     Route::get('/catalog/menus/tree',               [MenuGatewayController::class, 'tree']);      // ?product_code=
     Route::get('/catalog/products/{code}/menus',    [MenuGatewayController::class, 'byProduct']); // by product code
+
+    
+// get product dari panel
+Route::middleware([VerifyClientKey::class])
+    ->prefix('catalog')
+    ->group(function () {
+        Route::get('products', [ProductGatewayController::class, 'index']);
+        Route::get('products/{codeOrId}', [ProductGatewayController::class, 'show']);
+        // Jika masih butuh: Route::get('products/{code}/features', ...); dst.
+    });
+
+// daftar & detail mirror product dari panel
+Route::get ('/warehouse-products',        [WarehouseProductSyncController::class, 'index']);
+Route::get ('/warehouse-products/{id}',   [WarehouseProductSyncController::class, 'show']);
+
+// tombol/endpoint untuk tarik data dari Panel (sinkronisasi)
+Route::post('/warehouse-products/sync',   [WarehouseProductSyncController::class, 'sync']);
