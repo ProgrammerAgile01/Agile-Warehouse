@@ -14,6 +14,12 @@ return [
     |
     */
 
+    'panel' => [
+        'base' => env('PANEL_BASE', 'http://localhost:8000/api'),
+        // jika suatu hari perlu auth service-to-service, tambahkan key di sini
+        'key'  => env('PANEL_SERVICE_KEY', ''),
+    ],
+
     'mailgun' => [
         'domain' => env('MAILGUN_DOMAIN'),
         'secret' => env('MAILGUN_SECRET'),
