@@ -46,13 +46,13 @@ Route::prefix('features')
 
     
 // get product dari panel
-Route::middleware([VerifyClientKey::class])
-    ->prefix('catalog')
-    ->group(function () {
-        Route::get('products', [ProductGatewayController::class, 'index']);
-        Route::get('products/{codeOrId}', [ProductGatewayController::class, 'show']);
-        // Jika masih butuh: Route::get('products/{code}/features', ...); dst.
-    });
+// Route::middleware([VerifyClientKey::class])
+//     ->prefix('catalog')
+//     ->group(function () {
+//         Route::get('products', [ProductGatewayController::class, 'index']);
+//         Route::get('products/{codeOrId}', [ProductGatewayController::class, 'show']);
+//         // Jika masih butuh: Route::get('products/{code}/features', ...); dst.
+//     });
 
 // daftar & detail mirror product dari panel
 Route::get ('/warehouse-products',        [WarehouseProductSyncController::class, 'index']);
