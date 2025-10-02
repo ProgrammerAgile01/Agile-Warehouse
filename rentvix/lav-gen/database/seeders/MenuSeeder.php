@@ -5,12 +5,27 @@ namespace Database\Seeders;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class MenuSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        // Pastikan koneksi tenant
+        try {
+            DB::connection('tenant')->select('SELECT 1');
+        } catch (\Throwable $e) {
+            \Log::error('MenuSeeder: tenant connection not ready', ['err'=>$e->getMessage()]);
+            return;
+        }
+
+        DB::connection('tenant')->statement('SET FOREIGN_KEY_CHECKS=0');
+
+        if (!Schema::connection('tenant')->hasTable('mst_menus')) {
+            \Log::warning('MenuSeeder: mst_menus not found, skip');
+            DB::connection('tenant')->statement('SET FOREIGN_KEY_CHECKS=1');
+            return;
+        }
 
         // Insert berdasarkan level agar parent lebih dulu
         $rows = array (
@@ -6422,9 +6437,10 @@ class MenuSeeder extends Seeder
             $r['updated_at'] = $fmt($r['updated_at'] ?? null);
             $r['deleted_at'] = $fmt($r['deleted_at'] ?? null);
 
-            DB::table('mst_menus')->updateOrInsert(['id' => $r['id']], $r);
+            DB::connection('tenant')->table('mst_menus')->updateOrInsert(['id' => $r['id']], $r);
         }
 
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        DB::connection('tenant')->statement('SET FOREIGN_KEY_CHECKS=1');
+        \Log::info('MenuSeeder: inserted/updated', ['count' => count($rows)]);
     }
 }

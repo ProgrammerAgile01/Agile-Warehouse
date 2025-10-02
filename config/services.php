@@ -47,4 +47,9 @@ return [
         'key'  => env('WAREHOUSE_API_KEY', ''),
     ],
 
+    'store_webhook' => [
+        'secret' => env('STORE_WEBHOOK_SECRET', ''),
+    ],
+
+    
 ];

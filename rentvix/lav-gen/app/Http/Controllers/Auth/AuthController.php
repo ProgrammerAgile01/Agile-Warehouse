@@ -24,7 +24,7 @@ class AuthController extends Controller
             'password'   => ['required','string','min:8'],
         ]);
 
-        $company = Company::query()->where('id', $data['identifier'])->first();
+        $company = Company::query()->where('company_id', $data['identifier'])->first();
         if (!$company || !Hash::check($data['password'], $company->password)) {
             return response()->json(['message' => 'Invalid company credentials'], 401);
         }

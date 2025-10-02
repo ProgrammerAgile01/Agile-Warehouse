@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Provisioning\JobsController;
+use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Middleware\VerifyClientKey;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Gateway\ProductGatewayController;
@@ -60,3 +62,17 @@ Route::get ('/warehouse-products/{id}',   [WarehouseProductSyncController::class
 
 // tombol/endpoint untuk tarik data dari Panel (sinkronisasi)
 Route::post('/warehouse-products/sync',   [WarehouseProductSyncController::class, 'sync']);
+
+// proses generate akun dan db
+Route::post('/provisioning/jobs', [JobsController::class, 'store']);
+
+// Auth 2-langkah (company-first)
+Route::post('/tenant/resolve-company', [TenantAuthController::class, 'resolveCompany']); // step-1
+Route::post('/tenant/login',           [TenantAuthController::class, 'login']);          // step-2
+
+Route::get('/dev/test-wa', function (\App\Services\WhatsappSender $wa) {
+    $to   = '+6281234982153';
+    $text = "Tes cepat ✅\nIni pesan dari Warehouse (route).";
+    $wa->sendTemplate($to, $text);
+    return ['ok' => true];
+});

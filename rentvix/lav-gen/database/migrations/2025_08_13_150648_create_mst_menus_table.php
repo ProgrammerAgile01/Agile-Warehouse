@@ -22,6 +22,7 @@ return new class extends Migration {
 
             // kolom terkait tabel eksternal, TANPA constrained()
             $table->unsignedBigInteger('crud_builder_id')->nullable()->index();
+            $table->string('product_id', 64)->index()->nullable();
             $table->string('product_code', 64)->index()->nullable();
             $table->string('route_path')->nullable();
             $table->boolean('is_active')->default(true);

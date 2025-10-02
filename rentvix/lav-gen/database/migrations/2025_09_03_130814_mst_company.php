@@ -9,8 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('mst_company', function (Blueprint $table) {
-            $table->uuid('id')->primary();
+            $table->char('id', 26)->primary();
+            $table->string('company_id'); 
             $table->string('password'); // otomatis akan di-hash lewat model
+            $table->string('name')->nullable(); 
             $table->timestamps();
             $table->softDeletes();
         });
