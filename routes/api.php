@@ -40,6 +40,7 @@ Route::prefix('features')
         // Alias fitur-per-produk: /api/features/{product}
         Route::get('/{product}',        [FeatureGatewayController::class, 'byProduct']);
     });
+    Route::get('/features/{product}', [FeatureGatewayController::class, 'byProduct']);
 
     // === MENUS gateway (baru) ===
     Route::get('/catalog/menus',                    [MenuGatewayController::class, 'index']);     // ?product_code=&type=

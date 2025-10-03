@@ -52,4 +52,9 @@ return [
     ],
 
     
+    'warehouse' => [
+    'base'       => env('WAREHOUSE_BASE', 'http://localhost:9000/api'),
+    'client_key' => env('WAREHOUSE_CLIENT_KEY', ''), // akan dikirim sebagai X-CLIENT-KEY
+],
+
 ];
