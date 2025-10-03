@@ -13,7 +13,7 @@ export async function GET(
     const code = String(params.code).toUpperCase();
 
     // Asumsi table: app_menus
-    const rows = await prisma.MstMenu.findMany({
+    const rows = await prisma.mstMenu.findMany({
         where: { productCode: code, isActive: true },
         orderBy: [{ orderNumber: "asc" }],
     });

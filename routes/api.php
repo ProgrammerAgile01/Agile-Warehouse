@@ -7,7 +7,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Gateway\ProductGatewayController;
 use App\Http\Controllers\Gateway\FeatureGatewayController;
 use App\Http\Controllers\Gateway\MenuGatewayController;
+use App\Http\Controllers\Gateway\PackageMatrixGatewayController;
 use App\Http\Controllers\WarehouseProductSyncController;
+use App\Http\Controllers\Gateway\OfferingGatewayController;
 
 // Health check (tanpa middleware)
 Route::get('/health', fn () => response()->json([
@@ -29,6 +31,9 @@ Route::prefix('catalog')
 
         // Menu per produk (read-only, bersumber dari AppGenerate)
         Route::get('/products/{code}/menus',    [ProductGatewayController::class, 'menus']);
+
+        // Route::get('/packages/{product}/{package}/matrix', [PackageMatrixGatewayController::class, 'show']);
+        Route::get('/offerings/{product}/{offering}/matrix', [OfferingGatewayController::class, 'matrix']);
     });
 
 // ================== (Opsional) Endpoint util untuk debugging ==================

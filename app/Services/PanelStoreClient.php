@@ -87,4 +87,41 @@ class PanelStoreClient
             return ['ok' => false, 'status' => 0, 'error' => $e->getMessage()];
         }
     }
+
+     public function getPackageMatrix(string $productCode, string $packageCode): array
+    {
+        try {
+            $this->ensureClient();
+            $res = $this->http->get("store/packages/{$productCode}/{$packageCode}/matrix", [
+                'headers' => $this->headers(),
+            ]);
+            return [
+                'ok'     => true,
+                'status' => $res->getStatusCode(),
+                'json'   => json_decode($res->getBody()->getContents(), true),
+            ];
+        } catch (GuzzleException $e) {
+            return ['ok' => false, 'status' => 0, 'error' => $e->getMessage()];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'status' => 0, 'error' => $e->getMessage()];
+        }
+    }
+    public function getOfferingMatrix(string $product, string $offering): array
+{
+    try {
+        $this->ensureClient();
+        $res = $this->http->get("store/offerings/{$product}/{$offering}/matrix", [
+            'headers' => $this->headers(), // otomatis tambah X-SERVICE-KEY kalau ada
+        ]);
+        return [
+            'ok'     => true,
+            'status' => $res->getStatusCode(),
+            'json'   => json_decode($res->getBody()->getContents(), true),
+        ];
+    } catch (\GuzzleHttp\Exception\GuzzleException $e) {
+        return ['ok' => false, 'status' => 0, 'error' => $e->getMessage()];
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'status' => 0, 'error' => $e->getMessage()];
+    }
+}
 }

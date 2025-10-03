@@ -65,17 +65,62 @@ export function mapFeatureRow(r: any) {
     };
 }
 
+// mapMenuRow.ts (atau file yang sama)
 export function mapMenuRow(r: any) {
+    // helper ambil nilai pertama yang ada
+    const pick = <T = any>(...vals: any[]): T | undefined =>
+        vals.find((v) => v !== undefined && v !== null && v !== "");
+
+    // normalisasi tipe menu
+    const rawType = String(pick(r.type, r.menu_type, "menu")).toLowerCase();
+    const type = ["group", "module", "menu"].includes(rawType)
+        ? rawType
+        : "menu";
+
+    // flag aktif: hormati is_active/isActive, atau fallback: jika ada deleted_at dianggap non-aktif
+    const is_active =
+        (pick(r.is_active, r.isActive) as boolean | undefined) ??
+        (pick(r.deleted_at, r.deletedAt) ? false : true);
+
+    // order number dari beberapa kandidat
+    const order_number = Number(
+        pick(r.order_number, r.orderNumber, r.order, r.sort, r.position, 0)
+    );
+
+    // level (root=1). Upstream kadang pakai depth/level/Level
+    const level = Number(pick(r.level, r.Level, r.depth, 1));
+
+    // parent id bisa datang sebagai number/bigint/string → kirim string atau null
+    const parent_id =
+        pick(r.parent_id, r.parentId, r.parentID) != null
+            ? String(pick(r.parent_id, r.parentId, r.parentID))
+            : null;
+
+    // product_id opsional (UUID). Kembalikan string atau null supaya FE bisa bedakan “tak ada”
+    const product_id =
+        pick(r.product_id, r.productId) != null
+            ? String(pick(r.product_id, r.productId))
+            : null;
+
     return {
-        id: r.id != null ? Number(r.id) : 0,
-        parent_id: r.parent_id ?? null,
-        title: String(r.title ?? r.name ?? "Menu"),
-        icon: String(r.icon ?? ""),
-        route_path: String(r.route_path ?? r.path ?? ""),
-        order_number: Number(r.order_number ?? r.order ?? 0),
-        is_active: Boolean(r.is_active ?? true),
-        product_code: String(r.product_code ?? process.env.PRODUCT_CODE ?? ""),
-        type: String(r.type ?? "menu"),
+        id: String(pick(r.id, r.mirror_id, r.upstream_id, "")), // tetap string
+        parent_id,
+        level, // <— sekarang ada
+        type,
+        title: String(pick(r.title, r.name, "Menu")),
+        icon: String(pick(r.icon, "")),
+        color: pick(r.color) ? String(r.color) : undefined,
+        route_path: String(pick(r.route_path, r.routePath, r.path, "")),
+        order_number,
+        is_active: Boolean(is_active),
+        product_code: String(
+            pick(r.product_code, r.productCode, process.env.PRODUCT_CODE, "")
+        ),
+        product_id, // <— sekarang ada
+        crud_builder_id:
+            pick(r.crud_builder_id, r.crudBuilderId) != null
+                ? String(pick(r.crud_builder_id, r.crudBuilderId))
+                : undefined,
     };
 }
 

@@ -818,35 +818,39 @@ enum MenuType {
 // ===== MODEL =====
 model MstMenu {
   id            BigInt    @id @default(autoincrement())
-  parentId      BigInt?   @db.BigInt
-  level         Int       @db.TinyInt    
+  parentId      BigInt?   @db.BigInt      @map("parent_id")
+  level         Int       @db.TinyInt     // 1=root, 2=child, dst
   type          MenuType
   title         String    @db.VarChar(255)
   icon          String?   @db.VarChar(255)
   color         String?   @db.VarChar(32)
-  orderNumber   Int       @default(0)
-  crudBuilderId BigInt?   @db.BigInt
-  productId     String?   @db.Char(36)
-  productCode   String?   @db.VarChar(84)
-  routePath     String?   @db.VarChar(255)
-  isActive      Boolean   @default(true)
+  orderNumber   Int       @default(0)     @map("order_number")
+  crudBuilderId BigInt?   @db.BigInt      @map("crud_builder_id")
+  productId     String?   @db.Char(36)    @map("product_id")
+  productCode   String?   @db.VarChar(84) @map("product_code")
+  routePath     String?   @db.VarChar(255)@map("route_path")
+  isActive      Boolean   @default(true)  @map("is_active")
   note          String?   @db.Text
-  createdBy     BigInt?   @db.BigInt
-  deletedAt     DateTime? @db.Timestamp(6)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdBy     BigInt?   @db.BigInt      @map("created_by")
+  deletedAt     DateTime? @db.Timestamp(6)@map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
 
   // Self relation (tree)
   parent        MstMenu?  @relation("MenuChildren", fields: [parentId], references: [id])
   children      MstMenu[] @relation("MenuChildren")
 
+  // Indexes
   @@index([parentId])
   @@index([type, level])
   @@index([productCode])
-  @@unique([parentId, title])         // hindari judul duplikat dalam parent yang sama
-  @@map("mst_menus")                  // <— nama tabel fisik
-}
 
+  // Hindari judul duplikat dalam parent yang sama
+  @@unique([parentId, title])
+
+  // Nama tabel fisik (snake_case) yang dipakai Laravel
+  @@map("mst_menus")
+}
 model Feature {
   id              BigInt      @id @default(autoincrement()) @map("id")
 
